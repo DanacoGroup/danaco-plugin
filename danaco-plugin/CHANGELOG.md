@@ -5,6 +5,34 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## [3.1.0] — 2026-09-29
+
+Wydanie dokłada serwer MCP katalogu programów Danaco. Pierwsze wydanie prowadzone
+w repozytorium `DanacoGroup/danaco-plugin`, jednym źródle wtyczek dla wszystkich
+serwerów i kont. Sprawdzane na kliencie Claude Code 2.1.284.
+
+### Dodane
+
+- Serwer MCP `danaco-programy` (`mcp/danaco-programy.py`, wersja serwera 1.1.0)
+  zarejestrowany w `.mcp.json` pluginu i uruchamiany interpreterem `/usr/bin/python3`.
+  Narzędzia: `szukaj`, `opis`, `dzialy`, `lista`, `uruchom`. Tryb wybierany po nazwie
+  hosta albo zmienną `DANACO_PROGRAMY_TRYB`:
+  - `lokalny` na danaco-nexus — katalog `/danaco/programy/katalog` z dysku, `uruchom`
+    liczy na miejscu;
+  - `zdalny` na pozostałych serwerach — kopia katalogu z nexusa przez `rsync` (najwyżej
+    raz na 10 minut), `uruchom` wysyła pliki na nexusa, liczy tam jako to samo konto
+    i ściąga wyniki. Wymaga `ssh`, `rsync` i wpisu `Host danaco-nexus`
+    w `~/.ssh/config` konta.
+- README: rozdział 6 „Serwer MCP katalogu programów”, wymagania serwera i wpis
+  w znanych ograniczeniach; kolejne rozdziały przesunięte o jeden numer.
+
+### Znane braki
+
+- Katalog `hooks/` (`hooks.json`, `po_zapisie.sh`, `hooks/README.md`) nie przetrwał
+  pakowania wersji 3.0.0 i nie ma go w repozytorium. Hook kontroli po zapisie opisany
+  w rozdziale 5 README nie jest więc rejestrowany, a `tests/test_po_zapisie.py` nie
+  przechodzi. Walidatory działają z wiersza poleceń.
+
 ## [3.0.0] — 2026-09-05
 
 Wydanie dzieli dotychczasowy plugin na dwa niezależne. `danaco-plugin` zostaje warstwą

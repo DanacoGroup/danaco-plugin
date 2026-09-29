@@ -9,6 +9,65 @@ wersji 3.0.0 przez wydzielenie mechanizmu trybu ciągłej pracy z pluginu
 `danaco-plugin`; wpisy poniżej wersji 3.0.0 opisują ten mechanizm w jego dawnym
 miejscu i zostały przeniesione bez zmian.
 
+## [4.7.0] — 2026-09-29
+
+Wydanie przywraca hooki w samym pluginie. Paczki 4.6.0 rozprowadzone na serwery
+straciły katalog `hooks/`, więc strażnik działał wyłącznie tam, gdzie wpisano go ręcznie
+do `~/.claude/settings.json` konta. Pierwsze wydanie prowadzone w repozytorium
+`DanacoGroup/danaco-plugin`. Sprawdzane na kliencie Claude Code 2.1.284.
+
+### Dodane
+
+- `hooks/hooks.json` rejestruje te same zdarzenia co ręczne wpisy z `settings.json`,
+  z tymi samymi matcherami i limitami czasu:
+  - `PreToolUse` `Bash` → tryb `sekrety` (10 s) i `PreToolUse` `.*` → `pretool` (30 s);
+  - `UserPromptSubmit` → `prompt` (30 s);
+  - `PostToolUse` `^(Bash|PowerShell)$` → `kontrola` (20 s);
+  - `Stop` → `stop` (30 s);
+  - `SessionStart` → `sesja` (15 s);
+  - `PreCompact` → `kompakt` (15 s).
+- `hooks/straznik.sh` — wrapper POSIX sh na miejsce utraconego. Ustawia
+  `CLAUDE_PLUGIN_ROOT` (z klienta, a bez niego z położenia wrappera)
+  i `PYTHONDONTWRITEBYTECODE=1`, woła `/usr/bin/python3` po ścieżce bezwzględnej i jest
+  fail-open wobec awarii instalacji: brak interpretera albo skryptu trybu daje kod 0
+  z komunikatem na stderr. Polecenie w `hooks.json` nie woła interpretera wprost, bo
+  `python3` z nieistniejącym plikiem kończy się kodem 2, czyli blokadą — przy `Stop`
+  sesja nie mogłaby zakończyć tury. Kodem 2 kończy się też `sh` (dash) z nieistniejącym
+  plikiem, więc polecenia mają postać `[ -f "<wrapper>" ] && sh "<wrapper>" <tryb>`:
+  brak wrappera daje kod 1 (błąd nieblokujący), kod wrappera przechodzi bez zmian.
+- `scripts/sesja.py` — obsługa `SessionStart` przeniesiona z `~/.claude/hooks/danaco-praca/`.
+  Moduły bierze z własnego katalogu, każdy błąd kończy kodem 0 bez wyjścia.
+- `scripts/straz_sekretow.py` — straż sekretów i operacji nieodwracalnych przeniesiona
+  z `~/.claude/hooks/` bez zmian (74 wbudowane przypadki `--test`). Działa niezależnie
+  od znacznika zlecenia.
+
+### Zmienione
+
+- README: tabela zdarzeń z trybem `sekrety`, opis wrappera, wydajność, struktura
+  i wymagania (`/usr/bin/python3`).
+
+### Znane braki
+
+- Nie odtworzono szybkiej ścieżki dawnego wrappera (sprawdzenie znacznika w powłoce bez
+  uruchamiania Pythona), pliku potwierdzenia wykonania ani wrappera PowerShell
+  `hooks/straznik.ps1`. Python startuje przy każdym narzędziu.
+- Zestaw testów: 314 z 326 przechodzi. Nie przechodzi 12 przypadków, które sprawdzają
+  utracone elementy dawnego wrappera: `TestParytetWrapperow` (7, brak `straznik.ps1`),
+  `TestGranicaSpojna` (2, stałe szybkiej ścieżki), `TestBrakInterpretera`
+  `test_pretool_blokuje` i `test_stop_blokuje_z_komunikatem` (dawny wrapper blokował
+  przy braku interpretera, nowy przepuszcza) oraz `TestAtrapyInterpretera`
+  `test_kod_zero_bez_potwierdzenia_blokuje` (atrapa `python3` w `PATH` nie jest
+  uruchamiana, polecenie blokuje strażnik, a nie komunikat o braku potwierdzenia).
+
+### Zgodność
+
+- Konta z ręcznymi wpisami hooków w `~/.claude/settings.json` muszą je usunąć zaraz po
+  włączeniu 4.7.0 — inaczej każdy hook wykona się dwa razy. Pliki
+  `~/.claude/hooks/straz_sekretow.py` i `~/.claude/hooks/danaco-praca/` usuwa się
+  dopiero po zdjęciu tych wpisów: `python3` i `sh` z nieistniejącym plikiem kończą się
+  kodem 2, więc osierocony wpis blokowałby każde polecenie `Bash`, każde narzędzie,
+  wiadomość użytkownika i zakończenie tury.
+
 ## [4.6.0] — 2026-09-09
 
 Wydanie z trzech audytów wersji 4.5.0 i z dwóch nagrań pracy modelu. Weryfikowane na

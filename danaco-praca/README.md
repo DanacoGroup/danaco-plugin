@@ -5,9 +5,14 @@ zlecenie komendą `/pracuj`, a hooki pluginu odbierają modelowi trzy rzeczy —
 tury, zadawanie pytań i czekanie na pierwszym planie. Zlecenie zamyka wyłącznie
 użytkownik komendą `/stop`.
 
-Wersja 4.6.0. Mechanizm wydzielono z pluginu `danaco-plugin` (wspólna historia do
+Wersja 4.7.0. Mechanizm wydzielono z pluginu `danaco-plugin` (wspólna historia do
 2.3.2). Paczki standardów inżynierskich i walidatory dyscypliny zostały w tamtym
 pluginie; oba da się mieć zainstalowane naraz.
+
+Od 4.7.0 plugin rejestruje też straż sekretów Danaco (`scripts/straz_sekretow.py`,
+`PreToolUse` dla `Bash`): odrzuca polecenia, które wypisałyby sekret na ekran, a operacje
+nieodwracalne (wymuszony push, przepisanie historii, skasowanie bazy lub repozytorium)
+kieruje do potwierdzenia człowieka. Działa niezależnie od trybu ciągłej pracy.
 
 ## Komendy
 
@@ -78,10 +83,22 @@ projektu pozwala odtworzyć skasowany plik). Dopóki znacznik żyje — najwyże
 | `PostToolUse` (`Bash`, `PowerShell`) | `kontrola` | Odtwarza znacznik skasowany poleceniem powłoki. |
 | `SessionStart` | `sesja` | Nowa sesja w katalogu z aktywnym zleceniem dowiaduje się o nim od razu. |
 | `PreCompact` | `kompakt` | Zapisuje `.danaco/zadania/stan-<sesja>.md`, żeby zlecenie przetrwało kompresję kontekstu. |
+| `PreToolUse` (`Bash`) | `sekrety` | Straż sekretów: odmowa wypisania sekretu, pytanie o zgodę przy operacji nieodwracalnej. Działa zawsze, także bez znacznika. |
 
-Cała logika decyzji leży w `scripts/straznik.py`; `hooks/straznik.sh` (POSIX sh) i
-`hooks/straznik.ps1` (Windows bez Git Bash) tylko znajdują interpreter Pythona 3
-i przekazują mu zdarzenie. Kody wyjścia: 0 przepuszcza, 2 blokuje.
+Cała logika decyzji leży w skryptach Pythona: `scripts/straznik.py` (tryby `stop`,
+`prompt`, `pretool`, `kompakt`, `kontrola`), `scripts/sesja.py` (tryb `sesja`)
+i `scripts/straz_sekretow.py` (tryb `sekrety`). Wrapper `hooks/straznik.sh` (POSIX sh)
+ustawia `CLAUDE_PLUGIN_ROOT` i `PYTHONDONTWRITEBYTECODE=1`, wybiera skrypt dla trybu
+i przekazuje mu zdarzenie interpreterem `/usr/bin/python3`. Kody wyjścia strażnika:
+0 przepuszcza, 2 blokuje.
+
+Awaria instalacji nie zamyka sesji: gdy brakuje `/usr/bin/python3` albo skryptu trybu,
+wrapper wypisuje komunikat na stderr i kończy się kodem 0 (fail-open). Z tego powodu
+`hooks.json` woła wrapper, a nie interpreter wprost — `python3` z nieistniejącym
+plikiem skryptu kończy się kodem 2, który klient czyta jako blokadę. Tak samo kończy
+się `sh` (dash) z nieistniejącym plikiem, więc każde polecenie w `hooks.json` ma postać
+`[ -f "${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh" ] && sh "…/straznik.sh" <tryb>`: brak
+wrappera daje kod 1 (błąd nieblokujący), a kod wrappera, także 2, przechodzi bez zmian.
 
 ## Kontrola pierwszego planu
 
@@ -321,21 +338,22 @@ Narzędzia klienta zatrzymujące zadania (`TaskStop`, `KillShell`, `KillBash`, `
 i odpowiedniki `mcp__*`) oraz polecenia powłoki (`pkill`, `killall`, `kill %1`,
 `jobs -p | xargs kill`) są odrzucane: bieg puszczony w tło ma dobiec do końca.
 
-Wydajność: matcher `.*` znaczy wywołanie hooka przy każdym narzędziu, więc
-`hooks/straznik.sh` sprawdza obecność znacznika i plików blokad w samej powłoce i kończy
-się kodem 0 bez uruchamiania Pythona, gdy tryb jest nieaktywny. Zmierzony narzut: około
-**9 ms** na wywołanie przy nieaktywnym trybie (przy aktywnym, z uruchomieniem
-interpretera — około 46 ms).
+Wydajność: matcher `.*` znaczy wywołanie hooka przy każdym narzędziu. Wrapper 4.7.0
+uruchamia interpreter przy każdym wywołaniu, także przy nieaktywnym trybie (rząd
+kilkudziesięciu milisekund na narzędzie). Szybka ścieżka dawnego wrappera — sprawdzenie
+znacznika w samej powłoce bez Pythona, około 9 ms — nie przetrwała pakowania 4.6.0
+i nie została odtworzona.
 
 ## Struktura
 
 ```
 .claude-plugin/plugin.json      manifest pluginu
 .claude-plugin/marketplace.json wpis marketplace
-hooks/hooks.json                rejestracja sześciu zdarzeń
+hooks/hooks.json                rejestracja sześciu zdarzeń i straży sekretów
 hooks/straznik.sh               wrapper POSIX sh (Linux, macOS, Git Bash)
-hooks/straznik.ps1              wrapper PowerShell (Windows bez Git Bash)
 scripts/straznik.py             logika hooków - całe rozstrzyganie
+scripts/sesja.py                SessionStart: opis trwającego zlecenia
+scripts/straz_sekretow.py       straż sekretów i operacji nieodwracalnych (PreToolUse Bash)
 scripts/znacznik.py             pliki zlecenia, korzeń projektu, rozpoznawanie komend
 scripts/zadanie.py              start / krok / status / diagnoza / zakoncz
 skills/pracuj, stop, blokada,
@@ -346,14 +364,20 @@ tests/uruchom_testy.sh          uruchomienie zestawu bez zależności
 
 ## Wymagania i testy
 
-Python 3.10 lub nowszy w `PATH` powłoki, w której klient uruchamia hooki. Bez działającego
-interpretera i przy aktywnym znaczniku wrapper blokuje (fail-closed) z komunikatem, co
-zainstalować; wiadomości użytkownika nie są blokowane nigdy.
+Python 3.10 lub nowszy jako `/usr/bin/python3` i POSIX `sh`. Bez interpretera hooki są
+pomijane z komunikatem (fail-open), więc tryb ciągłej pracy i straż sekretów nie
+działają, ale sesja nie jest blokowana. Windows bez `/usr/bin/python3` nie jest
+obsługiwany; wrapper PowerShell (`hooks/straznik.ps1`) nie przetrwał pakowania 4.6.0.
 
 ```bash
 cd danaco-praca
 sh tests/uruchom_testy.sh       # zestaw oparty na unittest, bez zależności
+python3 scripts/straz_sekretow.py --test   # wbudowane przypadki straży sekretów
 ```
+
+Zestaw testów sprawdza też parytet z utraconymi elementami dawnego wrappera
+(`hooks/straznik.ps1`, stała `LIMIT_POZIOMOW` szybkiej ścieżki); te przypadki nie
+przechodzą do czasu ich odtworzenia — wykaz w `CHANGELOG.md`, wydanie 4.7.0.
 
 ## Zdjęcie trybu poza sesją
 

@@ -12,11 +12,11 @@ porządku, bramkę jakości i hook kontroli po zapisie pliku.
 | **Klasa dokumentu** | Stan wdrożenia |
 | **Odbiorcy** | deweloper instalujący i używający pluginu |
 | **Przeznaczenie** | opisuje, co plugin zawiera, czego wymaga, jak się instaluje i jak działa jego warstwa techniczna |
-| **Zakres** | paczki skilli, wymagania, instalacja, hooki, skrypty, struktura katalogów, ograniczenia, licencja |
+| **Zakres** | paczki skilli, wymagania, instalacja, hooki, serwer MCP, skrypty, struktura katalogów, ograniczenia, licencja |
 | **Poza zakresem** | instalacja na serwerze zdalnym — opisana w [INSTALACJA-VPS.md](INSTALACJA-VPS.md); historia wydań — w [CHANGELOG.md](CHANGELOG.md); treść normatywna standardów — w plikach `SKILL.md` poszczególnych paczek |
 | **Dokumenty powiązane** | [INSTALACJA-VPS.md](INSTALACJA-VPS.md) · [CHANGELOG.md](CHANGELOG.md) · [hooks/README.md](hooks/README.md) · [LICENSE](LICENSE) |
-| **Wersja pluginu** | 3.0.0 |
-| **Data** | 2026-09-05 |
+| **Wersja pluginu** | 3.1.0 |
+| **Data** | 2026-09-29 |
 
 ## Spis treści
 
@@ -26,26 +26,28 @@ porządku, bramkę jakości i hook kontroli po zapisie pliku.
    - [3.1 Przejście z wersji 1.1.0](#31-przejście-z-wersji-110)
 4. [Paczki skilli](#4-paczki-skilli)
 5. [Hooki](#5-hooki)
-6. [Skrypty](#6-skrypty)
-   - [6.1 Narzędzia wspólne pluginu](#61-narzędzia-wspólne-pluginu)
-   - [6.2 Narzędzia paczek](#62-narzędzia-paczek)
-   - [6.3 Testy](#63-testy)
-7. [Struktura katalogów](#7-struktura-katalogów)
-8. [Podział na dwa pluginy](#8-podział-na-dwa-pluginy)
-9. [Znane ograniczenia](#9-znane-ograniczenia)
-10. [Licencja](#10-licencja)
+6. [Serwer MCP katalogu programów](#6-serwer-mcp-katalogu-programów)
+7. [Skrypty](#7-skrypty)
+   - [7.1 Narzędzia wspólne pluginu](#71-narzędzia-wspólne-pluginu)
+   - [7.2 Narzędzia paczek](#72-narzędzia-paczek)
+   - [7.3 Testy](#73-testy)
+8. [Struktura katalogów](#8-struktura-katalogów)
+9. [Podział na dwa pluginy](#9-podział-na-dwa-pluginy)
+10. [Znane ograniczenia](#10-znane-ograniczenia)
+11. [Licencja](#11-licencja)
 
 ---
 
 ## 1. Do czego służy plugin
 
-Plugin odpowiada na trzy potrzeby pracy z modelem nad kodem produkcyjnym:
+Plugin odpowiada na cztery potrzeby pracy z modelem nad kodem produkcyjnym:
 
 | Potrzeba | Odpowiedź pluginu |
 |---|---|
 | Model ma pracować według jednego standardu, nie według własnych nawyków | piętnaście paczek skilli z treścią normatywną, wybieranych z opisu zadania |
 | Standard ma być sprawdzalny maszynowo, nie tylko opisany prozą | walidatory dyscypliny i nazewnictwa, audyt porządku, bramka jakości, hook kontroli po zapisie |
 | Naruszenie standardu ma być widoczne zaraz po zapisie, a nie dopiero w przeglądzie | hook `PostToolUse` uruchamiający oba walidatory na zmienionym pliku |
+| Model ma sięgać po programy Danaco, zamiast instalować własne narzędzia | serwer MCP `danaco-programy` z katalogiem programów danaco-nexus i zdalnym uruchamianiem (rozdz. 6) |
 
 Paczki skilli nie wymagają komend. Model dobiera je z opisu zadania na podstawie pola
 `description` w plikach `SKILL.md`; można je też wywołać wprost nazwą paczki.
@@ -60,6 +62,8 @@ Paczki skilli nie wymagają komend. Model dobiera je z opisu zadania na podstawi
 | `python3` w PATH (wersja 3.10 lub nowsza) | walidatory, audyt porządku, narzędzia kontraktu i testy są w Pythonie | patrz akapit poniżej |
 | POSIX `sh` | wrapper hooka jest w POSIX `sh` (`dash`, `busybox ash`, Git Bash) | hook nie uruchamia się wcale |
 | Git for Windows (tylko Windows) | dostarcza `sh` dla wrappera hooka | hook nie uruchamia się; walidatory zostają dostępne z wiersza poleceń |
+| `/usr/bin/python3` | interpreter serwera MCP `danaco-programy` (ścieżka bezwzględna w `.mcp.json`) | serwer MCP nie startuje, klient pokazuje błąd połączenia; paczki i walidatory działają |
+| `ssh`, `rsync` i `Host danaco-nexus` w `~/.ssh/config` (poza danaco-nexus) | tryb zdalny serwera MCP: kopia katalogu i uruchamianie programów na nexusie | katalog programów się nie odświeża, `uruchom` nie łączy się z nexusem |
 
 **Zależność od Pythona 3 nie jest opcjonalna.** Wrapper szuka interpretera kolejno jako
 `python3`, `python` i `py -3` (launcher Windows). Bez interpretera hook `PostToolUse`
@@ -155,11 +159,48 @@ pozostałe hook pomija.
 
 ---
 
-## 6. Skrypty
+## 6. Serwer MCP katalogu programów
+
+Od wersji 3.1.0 plugin uruchamia serwer MCP `danaco-programy`
+(`mcp/danaco-programy.py`, rejestracja w `.mcp.json`). Serwer udostępnia modelowi
+katalog programów Danaco z `/danaco/programy` na danaco-nexus — ponad tysiąc poleceń
+w działach (grafika, wideo, dźwięk, 3D, dokumenty, kod, dane, web, devops,
+bezpieczeństwo, testy, modele AI) — żeby model szukał narzędzia w katalogu, zanim
+cokolwiek zainstaluje albo uzna, że go brak.
+
+| Narzędzie | Co robi |
+|---|---|
+| `szukaj` | Wyszukuje programy i skille po temacie, zadaniu albo nazwie; zwraca krótką listę: polecenie, dział, przeznaczenie. |
+| `opis` | Pełny opis programu albo skilla: ścieżka, przeznaczenie, test działania i instrukcja `SKILL.md`; model czyta go przed pierwszym użyciem programu. |
+| `dzialy` | Lista działów katalogu z liczbą poleceń. |
+| `lista` | Wszystkie polecenia jednego działu z jednozdaniowym opisem. |
+| `uruchom` | Wykonuje polecenie z programami Danaco na danaco-nexus: pliki z `pliki` trafiają do `$WE`, polecenie działa w `$WY`, a zawartość `$WY` wraca do `wyniki_do`. |
+
+Tryb pracy serwer wybiera sam po nazwie hosta; zmienna `DANACO_PROGRAMY_TRYB`
+(`lokalny` albo `zdalny`) go nadpisuje.
+
+| Tryb | Gdzie | Źródło katalogu | Narzędzie `uruchom` |
+|---|---|---|---|
+| `lokalny` | danaco-nexus | `/danaco/programy/katalog` czytany z dysku; programy są w `PATH` | liczy lokalnie; pliki wejściowe dowiązuje do `$WE` bez kopiowania |
+| `zdalny` | pozostałe serwery | kopia katalogu ściągana z nexusa przez `rsync` (najwyżej raz na 10 minut) do `$XDG_CACHE_HOME/danaco-programy/katalog`, domyślnie pod `~/.cache` | wysyła pliki na nexusa do `/danaco/wymiana/<konto>/<serwer>/<zadanie>/we`, liczy tam jako to samo konto i ściąga wyniki do `wyniki_do` |
+
+Tryb zdalny wymaga na serwerze `ssh` i `rsync` oraz wpisu `Host danaco-nexus`
+w `~/.ssh/config` konta, z kluczem technicznym przyjmowanym bez pytań (połączenie
+w trybie `BatchMode`). Bez tego katalog się nie odświeża, a `uruchom` kończy się
+komunikatem o braku połączenia; reszta pluginu działa bez zmian.
+
+Zmienne pomocnicze: `DANACO_NEXUS_HOST` — nazwa hosta nexusa (domyślnie
+`danaco-nexus`), `DANACO_KATALOG` — inne położenie katalogu. Serwer korzysta wyłącznie
+z biblioteki standardowej Pythona i startuje interpreterem `/usr/bin/python3` (ścieżka
+bezwzględna w `.mcp.json`).
+
+---
+
+## 7. Skrypty
 
 Wszystkie skrypty działają na bibliotece standardowej Pythona i na POSIX `sh`.
 
-### 6.1 Narzędzia wspólne pluginu
+### 7.1 Narzędzia wspólne pluginu
 
 | Skrypt | Co robi |
 |---|---|
@@ -173,7 +214,7 @@ Pełna weryfikacja repozytorium jednym poleceniem:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/mass_actions.py" verify /ścieżka/do/repozytorium
 ```
 
-### 6.2 Narzędzia paczek
+### 7.2 Narzędzia paczek
 
 | Skrypt | Paczka | Co robi |
 |---|---|---|
@@ -193,7 +234,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/mass_actions.py" verify /ścieżka/do/rep
 | `skills/kodowanie/references/engineering-core/07-debug-testy-deploy/scripts/kontrola_strony.py` | `kodowanie` | Kontrola strony w przeglądarce: konsola, sieć, zrzuty ekranu. |
 | `skills/kodowanie/references/engineering-core/07-debug-testy-deploy/scripts/z_serwerem.py` | `kodowanie` | Uruchomienie serwera na czas sond diagnostycznych i zatrzymanie go po nich. |
 
-### 6.3 Testy
+### 7.3 Testy
 
 | Skrypt | Co obejmuje |
 |---|---|
@@ -215,7 +256,7 @@ sh tests/uruchom_testy.sh
 
 ---
 
-## 7. Struktura katalogów
+## 8. Struktura katalogów
 
 ```
 .
@@ -226,11 +267,14 @@ sh tests/uruchom_testy.sh
 │   ├── hooks.json           rejestracja jednego zdarzenia; jedyny klucz to `hooks`
 │   ├── po_zapisie.sh        wrapper PostToolUse
 │   └── README.md            opis hooka i kodów wyjścia
-├── scripts/                 narzędzia wspólne pluginu (rozdz. 6)
+├── mcp/
+│   └── danaco-programy.py   serwer MCP katalogu programów (rozdz. 6)
+├── .mcp.json                rejestracja serwera MCP `danaco-programy`
+├── scripts/                 narzędzia wspólne pluginu (rozdz. 7)
 ├── wspolne/
 │   └── standardy-zawodowe/  jedna kanoniczna kopia standardów zawodowych dla paczek
 ├── skills/                  piętnaście paczek skilli (rozdz. 4)
-├── tests/                   zestaw testów pluginu (rozdz. 6.3)
+├── tests/                   zestaw testów pluginu (rozdz. 7.3)
 ├── README.md                ten dokument
 ├── INSTALACJA-VPS.md        instalacja na serwerze zdalnym
 ├── CHANGELOG.md             historia wydań
@@ -264,7 +308,7 @@ w każdej z paczek, które się do nich odwołują.
 
 ---
 
-## 8. Podział na dwa pluginy
+## 9. Podział na dwa pluginy
 
 Od wersji 3.0.0 mechanizm trybu ciągłej pracy (`/pracuj`, `/stop`, `/blokada`) prowadzi
 osobny plugin `danaco-praca`. Ten plugin zawiera wyłącznie warstwę wiedzy i umiejętności
@@ -282,7 +326,7 @@ naraz.
 
 ---
 
-## 9. Znane ograniczenia
+## 10. Znane ograniczenia
 
 | Ograniczenie | Skutek |
 |---|---|
@@ -290,13 +334,14 @@ naraz.
 | Klienci niewykonujący hooków pluginu | kontrola po zapisie nie działa; zostaje treść normatywna paczek i ręczne wywołanie walidatorów |
 | Windows bez Git for Windows | wrapper `sh` nie uruchomi się; walidatory pozostają dostępne z wiersza poleceń |
 | Zapisy przez narzędzia MCP | nie wywołują zdarzenia `PostToolUse` pluginu, więc nie są kontrolowane |
+| Serwer MCP `danaco-programy` na systemie bez `/usr/bin/python3` (Windows) | serwer nie startuje; klient zgłasza błąd połączenia serwera MCP, reszta pluginu działa |
 | Reguły `wymyslony-kod`, `nazwa-metaforyczna` i `oznaczenie-literowo-numeryczne` są heurystyczne | możliwe fałszywe trafienia; procedura ich obsługi leży w `skills/weryfikatory-dyscypliny/SKILL.md` |
 
 Pełny opis walidatorów i ich granic: `skills/weryfikatory-dyscypliny/SKILL.md`.
 
 ---
 
-## 10. Licencja
+## 11. Licencja
 
 Licencja zastrzeżona Danaco Holding Group Sp. z o.o. — wszelkie prawa zastrzeżone, użytek
 wewnętrzny. Warunki korzystania, zakazy i wyłączenie odpowiedzialności: [LICENSE](LICENSE).

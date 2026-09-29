@@ -1,0 +1,82 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" sekrety",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" pretool",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" prompt",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|PowerShell)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" kontrola",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" stop",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" sesja",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" kompakt",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
