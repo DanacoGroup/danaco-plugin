@@ -37,7 +37,7 @@ WYMIANA = "/danaco/wymiana"  # na nexusie: /danaco/wymiana/<konto>/<serwer>/<zad
 MAKS_SKILL = 60000  # znaków SKILL.md zwracanych przez `opis`
 MAKS_WYJSCIE = 20000  # znaków stdout/stderr zwracanych przez `uruchom`
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
-WERSJA = "1.1.1"
+WERSJA = "1.2.0"
 
 INSTRUKCJE = (
     "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy, ponad 1000 poleceń: grafika, wideo, "
@@ -103,6 +103,7 @@ class Indeks:
         self.skille: dict[str, dict] = {}
         self.dzialy: dict[str, dict] = {}
         self.uwaga = ""
+        self.powiazane: set[str] = set()
 
     def znacznik(self) -> float:
         m = 0.0
@@ -147,7 +148,15 @@ class Indeks:
                     fm = frontmatter(f)
                     skille[d.name] = {"nazwa": d.name, "opis": fm.get("description", ""), "plik": str(f)}
         self.wpisy, self.skille, self.dzialy = wpisy, skille, dzialy
+        self.powiazane = {self.skill_wpisu(n) for n in wpisy} - {None}
         self.stempel = self.znacznik()
+
+    def skill_wpisu(self, nazwa: str) -> str | None:
+        w = self.wpisy.get(nazwa, {})
+        for kandydat in (w.get("skill"), nazwa):
+            if kandydat and kandydat in self.skille:
+                return kandydat
+        return None
 
     def szukaj(self, zapytanie: str, dzial: str | None, limit: int) -> list[tuple[int, str, str, str, str]]:
         self.odswiez()
@@ -161,7 +170,7 @@ class Indeks:
                 "kiedy": zloz(" ".join(w.get("kiedy_uzywac") or [])),
                 "do": zloz(w.get("do_czego", "")),
                 "dz": zloz(w["dzial"]),
-                "sk": zloz(self.skille.get(nazwa, {}).get("opis", "")),
+                "sk": zloz(self.skille.get(self.skill_wpisu(nazwa) or "", {}).get("opis", "")),
             }
             pkt = 0
             for s in slowa:
@@ -178,7 +187,7 @@ class Indeks:
                 wyniki.append((pkt, nazwa, w["dzial"], w.get("do_czego", ""), "polecenie"))
         if not dzial:
             for nazwa, s in self.skille.items():
-                if nazwa in self.wpisy:
+                if nazwa in self.wpisy or nazwa in self.powiazane:
                     continue
                 n, op = zloz(nazwa), zloz(s["opis"])
                 pkt = sum(30 * (x in n) + 4 * (x in op) for x in slowa)
@@ -209,7 +218,7 @@ def narzedzie_szukaj(arg: dict) -> str:
         if rodzaj == "skill":
             wiersze.append(f"- {nazwa} [skill]: {opis}")
         else:
-            znak = " (+skill)" if nazwa in INDEKS.skille else ""
+            znak = " (+skill)" if INDEKS.skill_wpisu(nazwa) else ""
             wiersze.append(f"- {nazwa}{znak} [{dz}]: {opis}")
     return z_uwaga("\n".join(wiersze))
 
@@ -217,7 +226,8 @@ def narzedzie_szukaj(arg: dict) -> str:
 def narzedzie_opis(arg: dict) -> str:
     INDEKS.odswiez()
     nazwa = str(arg.get("nazwa", "")).strip()
-    w, s = INDEKS.wpisy.get(nazwa), INDEKS.skille.get(nazwa)
+    w = INDEKS.wpisy.get(nazwa)
+    s = INDEKS.skille.get(INDEKS.skill_wpisu(nazwa) or nazwa) if w else INDEKS.skille.get(nazwa)
     if not w and not s:
         podobne = [r[1] for r in INDEKS.szukaj(nazwa, None, 8)]
         return f"Nie znam „{nazwa}”. Podobne: {', '.join(podobne) or 'brak'}."

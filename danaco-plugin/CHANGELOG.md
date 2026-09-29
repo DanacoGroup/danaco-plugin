@@ -5,6 +5,9 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## 3.2.0 (29.09.2026)
+- Serwer MCP danaco-programy: skille wiązane z programami przez pole „skill” rejestru (nowy katalog: 15 działów, 1157 wpisów); skill powiązany z programem nie dubluje się w wynikach.
+
 ## 3.1.1 (29.09.2026)
 - Serwer MCP danaco-programy: gdy w trybie zdalnym nie uda się pobrać katalogu z nexusa, wynik zawiera ostrzeżenie z przyczyną zamiast pustej listy.
 
