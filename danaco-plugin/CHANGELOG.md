@@ -5,6 +5,9 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## 3.1.1 (29.09.2026)
+- Serwer MCP danaco-programy: gdy w trybie zdalnym nie uda się pobrać katalogu z nexusa, wynik zawiera ostrzeżenie z przyczyną zamiast pustej listy.
+
 ## [3.1.0] — 2026-09-29
 
 Wydanie dokłada serwer MCP katalogu programów Danaco. Pierwsze wydanie prowadzone

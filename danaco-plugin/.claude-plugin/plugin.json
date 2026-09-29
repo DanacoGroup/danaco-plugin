@@ -1,6 +1,6 @@
 {
   "name": "danaco-plugin",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Standardy inżynierskie Danaco w 15 paczkach wiedzy i umiejętności: architektura, kodowanie, kontrola jakości, UI/UX, dokumentacja, kontrakt i nazewnictwo, wraz z maszynowymi walidatorami dyscypliny i nazewnictwa, hookiem kontroli po zapisie pliku oraz serwerem MCP katalogu programów danaco-nexus (tryb lokalny na nexusie, zdalny na pozostałych serwerach).",
   "author": {
     "name": "Danaco Group"

@@ -37,7 +37,7 @@ WYMIANA = "/danaco/wymiana"  # na nexusie: /danaco/wymiana/<konto>/<serwer>/<zad
 MAKS_SKILL = 60000  # znaków SKILL.md zwracanych przez `opis`
 MAKS_WYJSCIE = 20000  # znaków stdout/stderr zwracanych przez `uruchom`
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
-WERSJA = "1.1.0"
+WERSJA = "1.1.1"
 
 INSTRUKCJE = (
     "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy, ponad 1000 poleceń: grafika, wideo, "
@@ -102,6 +102,7 @@ class Indeks:
         self.wpisy: dict[str, dict] = {}
         self.skille: dict[str, dict] = {}
         self.dzialy: dict[str, dict] = {}
+        self.uwaga = ""
 
     def znacznik(self) -> float:
         m = 0.0
@@ -190,6 +191,11 @@ class Indeks:
 INDEKS = Indeks()
 
 
+def z_uwaga(tekst: str) -> str:
+    """Dokleja ostrzeżenie o nieudanej synchronizacji katalogu z nexusem (tryb zdalny)."""
+    return f"{INDEKS.uwaga}\n{tekst}" if INDEKS.uwaga else tekst
+
+
 def narzedzie_szukaj(arg: dict) -> str:
     zapytanie = str(arg.get("zapytanie", "")).strip()
     if not zapytanie:
@@ -197,7 +203,7 @@ def narzedzie_szukaj(arg: dict) -> str:
     limit = max(1, min(int(arg.get("limit", 15)), 60))
     wyniki = INDEKS.szukaj(zapytanie, arg.get("dzial"), limit)
     if not wyniki:
-        return f"Brak wyników dla „{zapytanie}”. Spróbuj synonimu albo `dzialy` i `lista`."
+        return z_uwaga(f"Brak wyników dla „{zapytanie}”. Spróbuj synonimu albo `dzialy` i `lista`.")
     wiersze = [f"Wyniki dla „{zapytanie}” ({len(wyniki)}); szczegóły: narzędzie `opis`."]
     for _, nazwa, dz, opis, rodzaj in wyniki:
         if rodzaj == "skill":
@@ -205,7 +211,7 @@ def narzedzie_szukaj(arg: dict) -> str:
         else:
             znak = " (+skill)" if nazwa in INDEKS.skille else ""
             wiersze.append(f"- {nazwa}{znak} [{dz}]: {opis}")
-    return "\n".join(wiersze)
+    return z_uwaga("\n".join(wiersze))
 
 
 def narzedzie_opis(arg: dict) -> str:
