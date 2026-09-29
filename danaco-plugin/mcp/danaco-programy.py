@@ -37,7 +37,7 @@ WYMIANA = "/danaco/wymiana"  # na nexusie: /danaco/wymiana/<konto>/<serwer>/<zad
 MAKS_SKILL = 60000  # znaków SKILL.md zwracanych przez `opis`
 MAKS_WYJSCIE = 20000  # znaków stdout/stderr zwracanych przez `uruchom`
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
-WERSJA = "1.2.0"
+WERSJA = "1.3.0"
 
 INSTRUKCJE = (
     "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy, ponad 1000 poleceń: grafika, wideo, "
@@ -259,6 +259,27 @@ def ucinaj(tekst: str) -> str:
     return tekst if len(tekst) <= MAKS_WYJSCIE else f"[… ucięto {len(tekst) - MAKS_WYJSCIE} znaków]\n" + tekst[-MAKS_WYJSCIE:]
 
 
+_KONTO_NEXUS: str | None = None
+
+
+def konto_na_nexusie() -> str | None:
+    """Nazwa konta, jako które pracujemy na nexusie (katalog wymiany należy do niego); lokalnie - bieżące konto."""
+    global _KONTO_NEXUS
+    if _KONTO_NEXUS:
+        return _KONTO_NEXUS
+    if TRYB == "lokalny":
+        import pwd
+        _KONTO_NEXUS = pwd.getpwuid(os.getuid()).pw_name
+        return _KONTO_NEXUS
+    try:
+        w = subprocess.run(SSH + [NEXUS, "id -un"], capture_output=True, text=True, timeout=30)
+        if w.returncode == 0 and w.stdout.strip():
+            _KONTO_NEXUS = w.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return _KONTO_NEXUS
+
+
 def narzedzie_uruchom(arg: dict) -> str:
     polecenie = str(arg.get("polecenie", "")).strip()
     if not polecenie:
@@ -268,7 +289,9 @@ def narzedzie_uruchom(arg: dict) -> str:
     if brak:
         return "Nie ma plików: " + ", ".join(brak)
     limit = max(10, min(int(arg.get("limit_s", 3600)), 86400))
-    konto = os.environ.get("USER") or os.getlogin()
+    konto = konto_na_nexusie()
+    if not konto:
+        return f"Nie mogę połączyć się z {NEXUS} (ssh {NEXUS} id -un). Sprawdź klucz techniczny konta i ~/.ssh/config."
     zadanie = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
     katalog = f"{WYMIANA}/{konto}/{socket.gethostname()}/{zadanie}"
     wyniki_do = os.path.abspath(os.path.expanduser(arg.get("wyniki_do") or os.path.join(os.getcwd(), "wyniki-nexus", zadanie)))
