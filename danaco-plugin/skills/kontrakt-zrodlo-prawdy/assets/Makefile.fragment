@@ -1,0 +1,22 @@
+# Fragment do wklejenia do Makefile w korzeniu repozytorium Danaco Console.
+# Wymaga skopiowania contract_tool.py do tools/ i wersjonowania go razem z kontraktem.
+
+CONTRACT_TOOL := python3 tools/contract_tool.py
+GO_PAR ?= $(shell n=$$(( $$(nproc 2>/dev/null || echo 4) / 2 )); [ $$n -ge 2 ] && echo $$n || echo 2)
+
+.PHONY: contract contract-validate contract-check check
+
+contract-validate: ## sprawdza poprawność shared/contract.json
+	$(CONTRACT_TOOL) validate --root .
+
+contract: ## regeneruje shared/contract.go i client/src/contract.ts
+	$(CONTRACT_TOOL) gen --root .
+
+contract-check: ## przerywa, gdy wygenerowany kod nie odpowiada kontraktowi
+	$(CONTRACT_TOOL) check --root .
+
+check: contract-check ## pełna kontrola przed wydaniem
+	go build ./...
+	go vet ./...
+	go test -p $(GO_PAR) ./...
+	cd client && npx tsc --noEmit && npx vitest run

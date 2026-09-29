@@ -1,0 +1,41 @@
+#!/bin/sh
+# Hak pre-commit Danaco Console: pilnuje, żeby kod nie rozjechał się z kontraktem
+# ani z macierzą trybów, a rozdzielacze kanału odpowiadały sekcji messages.
+#
+# Instalacja (wersjonowana w repozytorium, żeby każdy dostał ten sam hak):
+#   cp assets/pre-commit.sample tools/hooks/pre-commit
+#   task hooks          # kopiuje tools/hooks/pre-commit do .git/hooks/ i nadaje prawa
+
+set -e
+
+if git diff --cached --name-only | grep -q '^shared/contract.json$'; then
+  echo "Kontrakt zmieniony - regeneruję kod."
+  python3 tools/contract_tool.py gen --root . || exit 1
+  git add shared/contract.go client/src/contract.ts
+  if [ -f tools/modes_tool.py ]; then
+    python3 tools/modes_tool.py gen --root . || exit 1
+    git add shared/scopes.go client/src/scopes.ts
+  fi
+  if [ -f tools/channel_tool.py ]; then
+    python3 tools/channel_tool.py gen --root . || exit 1
+    git add server/internal/transport/dispatch_gen.go client/src/channel/dispatch_gen.ts
+  fi
+fi
+
+if ! python3 tools/contract_tool.py check --root .; then
+  echo ""
+  echo "Wygenerowany kod nie odpowiada kontraktowi."
+  echo "Uruchom: task contract"
+  exit 1
+fi
+
+# validate i check pilnują dwóch różnych rzeczy: czy macierz jest sensowna
+# i czy wygenerowane tablice widoczności ją odwzorowują.
+if [ -f tools/modes_tool.py ]; then
+  python3 tools/modes_tool.py validate --root . || exit 1
+  python3 tools/modes_tool.py check --root . || { echo "Uruchom: task modes"; exit 1; }
+fi
+
+if [ -f tools/channel_tool.py ]; then
+  python3 tools/channel_tool.py check --root . || { echo "Uruchom: task channel"; exit 1; }
+fi

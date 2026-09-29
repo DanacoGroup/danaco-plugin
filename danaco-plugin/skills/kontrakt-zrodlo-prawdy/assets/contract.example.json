@@ -1,0 +1,694 @@
+{
+  "contractVersion": "1.0.0",
+  "generated": {
+    "go": {
+      "path": "shared/contract.go",
+      "package": "shared"
+    },
+    "ts": {
+      "path": "client/src/contract.ts"
+    }
+  },
+  "enums": [
+    {
+      "name": "IsolationLevel",
+      "doc": "określa, ile stanu tryb dzieli z pozostałymi trybami tej samej sesji.",
+      "values": [
+        {
+          "name": "Shared",
+          "value": "shared",
+          "doc": "stan i zdarzenia widoczne dla całej sesji"
+        },
+        {
+          "name": "Isolated",
+          "value": "isolated",
+          "doc": "własna przestrzeń nazw, bez wycieku zdarzeń na zewnątrz"
+        },
+        {
+          "name": "Hybrid",
+          "value": "hybrid",
+          "doc": "czyta ze wspólnego stanu, zapisuje do własnej przestrzeni"
+        }
+      ]
+    },
+    {
+      "name": "AiRole",
+      "doc": "rola modelu AI w sesji współdzielonej.",
+      "values": [
+        {
+          "name": "Coordinator",
+          "value": "coordinator",
+          "doc": "rozdziela zadania i pilnuje warunków stopu"
+        },
+        {
+          "name": "Builder",
+          "value": "builder",
+          "doc": "wytwarza kod i treść"
+        },
+        {
+          "name": "Reviewer",
+          "value": "reviewer",
+          "doc": "kontroluje wynik innego modelu"
+        },
+        {
+          "name": "Researcher",
+          "value": "researcher",
+          "doc": "zbiera kontekst i materiał źródłowy"
+        }
+      ]
+    },
+    {
+      "name": "SessionState",
+      "doc": "stan cyklu życia sesji.",
+      "values": [
+        {
+          "name": "Opening",
+          "value": "opening"
+        },
+        {
+          "name": "Ready",
+          "value": "ready"
+        },
+        {
+          "name": "Suspended",
+          "value": "suspended"
+        },
+        {
+          "name": "Closing",
+          "value": "closing"
+        },
+        {
+          "name": "Closed",
+          "value": "closed"
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "SessionRef",
+      "doc": "wskazuje konkretną sesję w konkretnym trybie.",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "uuid",
+          "doc": "identyfikator sesji"
+        },
+        {
+          "name": "modeId",
+          "type": "string",
+          "doc": "tryb w postaci środowisko.moduł"
+        },
+        {
+          "name": "state",
+          "type": "SessionState"
+        },
+        {
+          "name": "openedAt",
+          "type": "timestamp"
+        },
+        {
+          "name": "parentSessionId",
+          "type": "uuid",
+          "optional": true,
+          "doc": "sesja nadrzędna przy sesji współdzielonej"
+        }
+      ]
+    },
+    {
+      "name": "SessionOpenRequest",
+      "doc": "żądanie otwarcia sesji w danym trybie.",
+      "fields": [
+        {
+          "name": "modeId",
+          "type": "string"
+        },
+        {
+          "name": "isolation",
+          "type": "IsolationLevel",
+          "doc": "nadpisuje domyślną izolację trybu"
+        },
+        {
+          "name": "parentSessionId",
+          "type": "uuid",
+          "optional": true
+        },
+        {
+          "name": "resumeFrom",
+          "type": "int64",
+          "optional": true,
+          "doc": "numer sekwencyjny do wznowienia"
+        }
+      ]
+    },
+    {
+      "name": "SessionOpened",
+      "doc": "potwierdzenie otwarcia sesji.",
+      "fields": [
+        {
+          "name": "session",
+          "type": "SessionRef"
+        },
+        {
+          "name": "contractHash",
+          "type": "string",
+          "doc": "skrót kontraktu rdzenia, porównywany ze skrótem klienta"
+        },
+        {
+          "name": "capabilities",
+          "type": "string[]",
+          "doc": "funkcje udostępnione w tym trybie"
+        }
+      ]
+    },
+    {
+      "name": "SessionStateChanged",
+      "doc": "zmiana stanu sesji rozesłana do obserwatorów.",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "uuid"
+        },
+        {
+          "name": "state",
+          "type": "SessionState"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "optional": true,
+          "doc": "kod przyczyny, nigdy treść danych sprawy"
+        }
+      ]
+    },
+    {
+      "name": "AiChannel",
+      "doc": "jeden z równoległych torów AI wewnątrz sesji.",
+      "fields": [
+        {
+          "name": "channelId",
+          "type": "uuid"
+        },
+        {
+          "name": "role",
+          "type": "AiRole"
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "doc": "identyfikator modelu"
+        },
+        {
+          "name": "isolation",
+          "type": "IsolationLevel",
+          "doc": "ile kontekstu sesji widzi ten model"
+        },
+        {
+          "name": "tokenBudget",
+          "type": "int64",
+          "doc": "górny limit zużycia w tej sesji"
+        }
+      ]
+    },
+    {
+      "name": "AiAttachRequest",
+      "doc": "podłączenie modelu AI do istniejącej sesji.",
+      "fields": [
+        {
+          "name": "sessionId",
+          "type": "uuid"
+        },
+        {
+          "name": "role",
+          "type": "AiRole"
+        },
+        {
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "name": "isolation",
+          "type": "IsolationLevel"
+        },
+        {
+          "name": "tokenBudget",
+          "type": "int64"
+        }
+      ]
+    },
+    {
+      "name": "AiPrompt",
+      "doc": "polecenie skierowane do konkretnego toru AI.",
+      "fields": [
+        {
+          "name": "channelId",
+          "type": "uuid"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "contextRefs",
+          "type": "string[]",
+          "optional": true,
+          "doc": "identyfikatory techniczne kontekstu, nie jego treść"
+        }
+      ]
+    },
+    {
+      "name": "AiDelta",
+      "doc": "fragment odpowiedzi modelu w strumieniu.",
+      "fields": [
+        {
+          "name": "channelId",
+          "type": "uuid"
+        },
+        {
+          "name": "seq",
+          "type": "int64"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "final",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "CoreStatus",
+      "doc": "stan rdzenia Go widziany przez powłokę Tauri.",
+      "fields": [
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "contractHash",
+          "type": "string"
+        },
+        {
+          "name": "uptimeSeconds",
+          "type": "int64"
+        },
+        {
+          "name": "openSessions",
+          "type": "int"
+        },
+        {
+          "name": "listenPort",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "name": "CoreStatusRequest",
+      "doc": "puste żądanie stanu rdzenia.",
+      "fields": []
+    }
+  ],
+  "modes": [
+    {
+      "id": "kancelaria.sprawy",
+      "environment": "kancelaria",
+      "module": "sprawy",
+      "isolation": "shared",
+      "doc": "Rejestr spraw, sygnatury, statusy"
+    },
+    {
+      "id": "kancelaria.dokumenty",
+      "environment": "kancelaria",
+      "module": "dokumenty",
+      "isolation": "shared",
+      "doc": "Repozytorium dokumentów sprawy"
+    },
+    {
+      "id": "kancelaria.terminarz",
+      "environment": "kancelaria",
+      "module": "terminarz",
+      "isolation": "shared",
+      "doc": "Terminy procesowe i przypomnienia"
+    },
+    {
+      "id": "kancelaria.pisma",
+      "environment": "kancelaria",
+      "module": "pisma",
+      "isolation": "isolated",
+      "doc": "Redagowanie i wysyłka pism",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 2,
+        "isolation": "isolated"
+      }
+    },
+    {
+      "id": "kancelaria.klienci",
+      "environment": "kancelaria",
+      "module": "klienci",
+      "isolation": "isolated",
+      "doc": "Kartoteka klientów"
+    },
+    {
+      "id": "kancelaria.rozliczenia",
+      "environment": "kancelaria",
+      "module": "rozliczenia",
+      "isolation": "isolated",
+      "doc": "Czas pracy i faktury"
+    },
+    {
+      "id": "kancelaria.wzory",
+      "environment": "kancelaria",
+      "module": "wzory",
+      "isolation": "shared",
+      "doc": "Biblioteka wzorów dokumentów",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 1,
+        "isolation": "shared"
+      }
+    },
+    {
+      "id": "kancelaria.archiwum",
+      "environment": "kancelaria",
+      "module": "archiwum",
+      "isolation": "isolated",
+      "doc": "Sprawy zamknięte, retencja"
+    },
+    {
+      "id": "poczta.skrzynka",
+      "environment": "poczta",
+      "module": "skrzynka",
+      "isolation": "shared",
+      "doc": "Widok skrzynek i folderów"
+    },
+    {
+      "id": "poczta.watki",
+      "environment": "poczta",
+      "module": "watki",
+      "isolation": "shared",
+      "doc": "Wątkowanie korespondencji"
+    },
+    {
+      "id": "poczta.reguly",
+      "environment": "poczta",
+      "module": "reguly",
+      "isolation": "isolated",
+      "doc": "Reguły segregacji i automatyzacji"
+    },
+    {
+      "id": "poczta.szablony",
+      "environment": "poczta",
+      "module": "szablony",
+      "isolation": "shared",
+      "doc": "Szablony odpowiedzi",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 1,
+        "isolation": "shared"
+      }
+    },
+    {
+      "id": "poczta.kontakty",
+      "environment": "poczta",
+      "module": "kontakty",
+      "isolation": "isolated",
+      "doc": "Książka adresowa"
+    },
+    {
+      "id": "poczta.zalaczniki",
+      "environment": "poczta",
+      "module": "zalaczniki",
+      "isolation": "isolated",
+      "doc": "Magazyn załączników i skanów"
+    },
+    {
+      "id": "poczta.konta",
+      "environment": "poczta",
+      "module": "konta",
+      "isolation": "isolated",
+      "doc": "Konfiguracja kont IMAP i SMTP"
+    },
+    {
+      "id": "poczta.wyszukiwarka",
+      "environment": "poczta",
+      "module": "wyszukiwarka",
+      "isolation": "shared",
+      "doc": "Wyszukiwanie pełnotekstowe"
+    },
+    {
+      "id": "crm.leady",
+      "environment": "crm",
+      "module": "leady",
+      "isolation": "shared",
+      "doc": "Zapytania i kwalifikacja"
+    },
+    {
+      "id": "crm.kontrahenci",
+      "environment": "crm",
+      "module": "kontrahenci",
+      "isolation": "shared",
+      "doc": "Podmioty i powiązania",
+      "reads": [
+        "crm.kontrahenci",
+        "crm.leady",
+        "crm.lejek",
+        "crm.raporty",
+        "crm.zadania",
+        "kancelaria.sprawy"
+      ]
+    },
+    {
+      "id": "crm.oferty",
+      "environment": "crm",
+      "module": "oferty",
+      "isolation": "isolated",
+      "doc": "Oferty i wyceny"
+    },
+    {
+      "id": "crm.zadania",
+      "environment": "crm",
+      "module": "zadania",
+      "isolation": "shared",
+      "doc": "Zadania zespołu"
+    },
+    {
+      "id": "crm.kampanie",
+      "environment": "crm",
+      "module": "kampanie",
+      "isolation": "isolated",
+      "doc": "Kampanie i sekwencje",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 2,
+        "isolation": "isolated"
+      }
+    },
+    {
+      "id": "crm.raporty",
+      "environment": "crm",
+      "module": "raporty",
+      "isolation": "shared",
+      "doc": "Raporty i wskaźniki"
+    },
+    {
+      "id": "crm.lejek",
+      "environment": "crm",
+      "module": "lejek",
+      "isolation": "shared",
+      "doc": "Lejek sprzedażowy"
+    },
+    {
+      "id": "crm.integracje",
+      "environment": "crm",
+      "module": "integracje",
+      "isolation": "isolated",
+      "doc": "Połączenia z systemami zewnętrznymi"
+    },
+    {
+      "id": "studio.projekty",
+      "environment": "studio",
+      "module": "projekty",
+      "isolation": "shared",
+      "doc": "Projekty i kamienie milowe"
+    },
+    {
+      "id": "studio.repozytoria",
+      "environment": "studio",
+      "module": "repozytoria",
+      "isolation": "isolated",
+      "doc": "Lokalne repozytoria git"
+    },
+    {
+      "id": "studio.przeplywy",
+      "environment": "studio",
+      "module": "przeplywy",
+      "isolation": "shared",
+      "doc": "Definicje przepływów pracy",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 2,
+        "isolation": "shared"
+      }
+    },
+    {
+      "id": "studio.agenci",
+      "environment": "studio",
+      "module": "agenci",
+      "isolation": "hybrid",
+      "doc": "Konfiguracja modeli AI i ról",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 4,
+        "isolation": "hybrid"
+      }
+    },
+    {
+      "id": "studio.kolejka",
+      "environment": "studio",
+      "module": "kolejka",
+      "isolation": "hybrid",
+      "doc": "Kolejka zadań wykonawczych",
+      "ai": {
+        "allowed": true,
+        "maxChannels": 4,
+        "isolation": "hybrid"
+      }
+    },
+    {
+      "id": "studio.dzienniki",
+      "environment": "studio",
+      "module": "dzienniki",
+      "isolation": "shared",
+      "doc": "Dzienniki i ślad audytowy"
+    },
+    {
+      "id": "studio.sekrety",
+      "environment": "studio",
+      "module": "sekrety",
+      "isolation": "isolated",
+      "doc": "Poświadczenia i klucze"
+    },
+    {
+      "id": "studio.wydania",
+      "environment": "studio",
+      "module": "wydania",
+      "isolation": "isolated",
+      "doc": "Budowanie i wydania"
+    }
+  ],
+  "messages": [
+    {
+      "name": "SessionOpen",
+      "channel": "session",
+      "direction": "clientToServer",
+      "payload": "SessionOpenRequest",
+      "response": "SessionOpened",
+      "doc": "otwiera sesję w wybranym trybie"
+    },
+    {
+      "name": "SessionOpened",
+      "channel": "session",
+      "direction": "serverToClient",
+      "payload": "SessionOpened",
+      "doc": "potwierdzenie otwarcia"
+    },
+    {
+      "name": "SessionClose",
+      "channel": "session",
+      "direction": "clientToServer",
+      "payload": "SessionRef",
+      "doc": "zamyka sesję"
+    },
+    {
+      "name": "SessionStateChanged",
+      "channel": "session",
+      "direction": "serverToClient",
+      "payload": "SessionStateChanged",
+      "doc": "rozgłos zmiany stanu"
+    },
+    {
+      "name": "AiAttach",
+      "channel": "ai",
+      "direction": "clientToServer",
+      "payload": "AiAttachRequest",
+      "response": "AiAttached",
+      "doc": "podłącza model AI do sesji"
+    },
+    {
+      "name": "AiAttached",
+      "channel": "ai",
+      "direction": "serverToClient",
+      "payload": "AiChannel",
+      "doc": "potwierdzenie podłączenia toru AI"
+    },
+    {
+      "name": "AiPrompt",
+      "channel": "ai",
+      "direction": "clientToServer",
+      "payload": "AiPrompt",
+      "doc": "polecenie do toru AI"
+    },
+    {
+      "name": "AiDelta",
+      "channel": "ai",
+      "direction": "serverToClient",
+      "payload": "AiDelta",
+      "doc": "fragment odpowiedzi modelu"
+    }
+  ],
+  "commands": [
+    {
+      "name": "core_status",
+      "doc": "pyta rdzeń Go o stan",
+      "request": "CoreStatusRequest",
+      "response": "CoreStatus"
+    },
+    {
+      "name": "core_restart",
+      "doc": "restartuje proces poboczny rdzenia"
+    },
+    {
+      "name": "open_data_dir",
+      "doc": "otwiera katalog danych w powłoce systemowej"
+    }
+  ],
+  "errors": [
+    {
+      "code": "E_MODE_UNKNOWN",
+      "message": "Nieznany tryb sesyjny.",
+      "doc": "identyfikator trybu spoza rejestru"
+    },
+    {
+      "code": "E_CONTRACT_MISMATCH",
+      "message": "Niezgodna wersja kontraktu klienta i rdzenia.",
+      "doc": "rozjazd skrótu kontraktu"
+    },
+    {
+      "code": "E_SESSION_UNKNOWN",
+      "message": "Sesja nie istnieje lub wygasła."
+    },
+    {
+      "code": "E_ISOLATION_VIOLATION",
+      "message": "Próba dostępu poza przyznaną przestrzeń izolacji.",
+      "doc": "tor AI sięgnął po stan spoza swojego zakresu"
+    },
+    {
+      "code": "E_BUDGET_EXCEEDED",
+      "message": "Wyczerpany budżet zadania."
+    },
+    {
+      "code": "E_RESUME_GAP",
+      "message": "Nie można wznowić strumienia od podanego numeru."
+    }
+  ],
+  "modeBridges": [
+    {
+      "from": "crm.kontrahenci",
+      "to": "kancelaria.sprawy",
+      "reason": "Kartoteka kontrahenta pokazuje liczbę spraw prowadzonych dla podmiotu; przez most przechodzą wyłącznie identyfikatory i liczniki, nigdy treść akt."
+    }
+  ]
+}

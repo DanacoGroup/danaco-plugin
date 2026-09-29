@@ -1,0 +1,193 @@
+# Taskfile Danaco Console. Uruchamianie: `task <cel>`, lista: `task --list`.
+# Równoległość testów Go jest wyliczana z liczby rdzeni maszyny (połowa rdzeni,
+# nie mniej niż 2), żeby drabina weryfikacji nie była wąskim gardłem, a kompilacja
+# miała jeszcze miejsce. Wartość nadpiszesz przez: GO_PAR=4 task go:test
+
+version: '3'
+
+vars:
+  GO_PAR:
+    sh: |
+      n="${GO_PAR:-$(( $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) / 2 ))}"
+      [ "$n" -ge 2 ] && echo "$n" || echo 2
+
+tasks:
+  # ---------------------------------------------------------------- kontrakt
+
+  contract:validate:
+    desc: Sprawdza poprawność shared/contract.json (nic nie zapisuje)
+    cmds:
+      - python3 tools/contract_tool.py validate --root .
+
+  contract:
+    desc: Regeneruje shared/contract.go i client/src/contract.ts z kontraktu
+    cmds:
+      - python3 tools/contract_tool.py gen --root .
+
+  contract:check:
+    desc: Przerywa, gdy wygenerowany kod nie odpowiada kontraktowi
+    cmds:
+      - python3 tools/contract_tool.py check --root .
+
+  # ------------------------------------------------------- macierz trybów
+
+  modes:
+    desc: Generuje tablice zakresów widoczności z macierzy trybów
+    cmds:
+      - python3 tools/modes_tool.py gen --root .
+
+  modes:validate:
+    desc: Kontrola niezmienników macierzy trybów (czy macierz jest sensowna)
+    cmds:
+      - python3 tools/modes_tool.py validate --root .
+
+  modes:check:
+    desc: Przerywa, gdy tablice widoczności nie odpowiadają macierzy (czy kod ją odwzorowuje)
+    cmds:
+      - python3 tools/modes_tool.py validate --root .
+      - python3 tools/modes_tool.py check --root .
+
+  modes:report:
+    desc: Macierz i diagram widoczności do MACIERZ.md
+    cmds:
+      - python3 tools/modes_tool.py report --root . --out MACIERZ.md
+
+  # ---------------------------------------------------------------- kanał
+
+  channel:
+    desc: Generuje rozdzielacze komunikatów Go i TypeScript
+    cmds:
+      - python3 tools/channel_tool.py gen --root .
+
+  channel:check:
+    desc: Przerywa, gdy rozdzielacze nie odpowiadają kontraktowi
+    cmds:
+      - python3 tools/channel_tool.py check --root .
+
+  # ---------------------------------------------------------- generowanie
+
+  gen:
+    desc: Całe generowanie w poprawnej kolejności; kontrakt idzie pierwszy
+    cmds:
+      - task: contract
+      - task: modes
+      - task: channel
+      # sqlc, oapi-codegen, mockery, prisma i drizzle-kit dopisuj poniżej -
+      # ich wejściem bywają typy z kontraktu, więc nie mogą iść przed nim.
+
+  gen:check:
+    desc: Kontrola całego generowania
+    cmds:
+      - task: contract:check
+      - task: modes:check
+      - task: channel:check
+
+  # -------------------------------------------------------------- powłoka
+
+  tauri:check:
+    desc: Kontrola granicy Tauri wobec kontraktu i przegląd konfiguracji powłoki
+    cmds:
+      - python3 tools/tauri_check.py --root .
+
+  tauri:dev:
+    desc: Powłoka w trybie deweloperskim
+    dir: desktop
+    cmds:
+      - cargo tauri dev
+
+  tauri:build:
+    desc: Instalator dla bieżącej platformy
+    dir: desktop
+    cmds:
+      - cargo tauri build
+
+  windows:
+    desc: Krzyżowa budowa instalatora NSIS pod Windows z Linuksa (cargo-xwin, NSIS, LLVM)
+    dir: desktop
+    cmds:
+      # Wymaga: cargo-xwin, nsis, lld/llvm oraz celu Rust x86_64-pc-windows-msvc.
+      # Tauri obsługuje w tej ścieżce wyłącznie instalator NSIS, nie MSI.
+      - cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+
+  # ---------------------------------------------------------- orkiestracja
+
+  flow:check:
+    desc: Kontrola wszystkich definicji przepływów przed uruchomieniem pętli
+    cmds:
+      - |
+        for f in workflows/*.json; do
+          [ -e "$f" ] || { echo "brak definicji w workflows/"; exit 1; }
+          python3 tools/workflow_tool.py validate "$f" --root . || exit 1
+        done
+
+  # --------------------------------------------------------------- budowa
+
+  go:build:
+    desc: Kompilacja całego modułu Go
+    cmds:
+      - go build ./...
+
+  go:vet:
+    desc: go vet dla całego modułu
+    cmds:
+      - go vet ./...
+
+  go:lint:
+    desc: golangci-lint i staticcheck
+    cmds:
+      - golangci-lint run --timeout 5m
+      - staticcheck ./...
+
+  go:test:
+    desc: Testy Go z czytelnym podsumowaniem (równoległość z GO_PAR)
+    cmds:
+      - "gotestsum --format testname -- -p {{.GO_PAR}} ./..."
+
+  client:types:
+    desc: Kontrola typów TypeScript bez emisji
+    dir: client
+    cmds:
+      - npx tsc --noEmit
+
+  client:test:
+    desc: Testy Vitest
+    dir: client
+    cmds:
+      - npx vitest run
+
+  e2e:
+    desc: Testy end-to-end Playwright
+    dir: client
+    cmds:
+      - npx playwright test
+
+  a11y:
+    desc: Kontrola dostępności uruchomionego interfejsu
+    cmds:
+      - pa11y http://localhost:5173
+
+  standard:
+    desc: Bramki domowe Danaco (odmawiają, więc uruchamiaj przed commitem) - wrapper na style_guard.py + nazwy_guard.py z pluginu danaco-plugin
+    cmds:
+      - python3 "${CLAUDE_PLUGIN_ROOT}/scripts/mass_actions.py" verify .
+
+  # ------------------------------------------------------------- kontrola
+
+  check:
+    desc: Pełna drabina weryfikacji przed wydaniem
+    cmds:
+      - task: gen:check
+      - task: tauri:check
+      - task: go:build
+      - task: go:vet
+      - task: go:lint
+      - task: go:test
+      - task: client:types
+      - task: client:test
+      - task: standard
+
+  hooks:
+    desc: Instaluje hak pre-commit z tools/hooks/pre-commit
+    cmds:
+      - cp tools/hooks/pre-commit .git/hooks/pre-commit
+      - chmod +x .git/hooks/pre-commit

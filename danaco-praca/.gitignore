@@ -1,0 +1,31 @@
+# Artefakty Pythona
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Środowiska wirtualne
+.venv/
+venv/
+
+# Katalog roboczy znacznika trybu ciągłej pracy - nigdy nie wchodzi do repozytorium
+.danaco/
+
+# Pliki tymczasowe i kopie zapasowe
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*~
+.#*
+
+# Artefakty systemów plików
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dzienniki
+*.log

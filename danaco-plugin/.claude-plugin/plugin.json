@@ -1,0 +1,31 @@
+{
+  "name": "danaco-plugin",
+  "version": "3.0.0",
+  "description": "Standardy inżynierskie Danaco w 15 paczkach wiedzy i umiejętności: architektura, kodowanie, kontrola jakości, UI/UX, dokumentacja, kontrakt i nazewnictwo, wraz z maszynowymi walidatorami dyscypliny i nazewnictwa oraz hookiem kontroli po zapisie pliku.",
+  "author": {
+    "name": "Danaco Group"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "danaco",
+    "danaco-console",
+    "architektura",
+    "dokumentacja",
+    "kodowanie",
+    "kontrola-jakosci",
+    "przeglad-kodu",
+    "dyscyplina-kodu",
+    "nazewnictwo",
+    "standard-redakcyjny",
+    "ui-ux",
+    "design-systemowy",
+    "tauri",
+    "go",
+    "typescript",
+    "python",
+    "websocket",
+    "orkiestracja-agentow",
+    "hooki",
+    "walidatory"
+  ]
+}

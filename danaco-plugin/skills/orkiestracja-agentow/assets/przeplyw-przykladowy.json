@@ -1,0 +1,134 @@
+{
+  "id": "budowa-modulu",
+  "goal": "Zbudować moduł kancelaria.egzekucje zgodnie z kontraktem, z testami i bez naruszeń bramek domowych.",
+  "mode": "studio.kolejka",
+  "budget": {
+    "totalTokens": 20000000,
+    "wallClockHours": 72,
+    "perTaskTokens": 300000
+  },
+  "roles": [
+    {
+      "role": "coordinator",
+      "model": "model-koordynator",
+      "isolation": "hybrid",
+      "tokenBudget": 4000000
+    },
+    {
+      "role": "researcher",
+      "model": "model-badacz",
+      "isolation": "hybrid",
+      "tokenBudget": 3000000
+    },
+    {
+      "role": "builder",
+      "model": "model-wykonawca",
+      "isolation": "hybrid",
+      "tokenBudget": 9000000
+    },
+    {
+      "role": "reviewer",
+      "model": "model-kontroler",
+      "isolation": "isolated",
+      "tokenBudget": 4000000
+    }
+  ],
+  "queue": {
+    "maxDepth": 200,
+    "maxRetries": 3
+  },
+  "steps": [
+    {
+      "id": "rozpoznanie",
+      "role": "researcher",
+      "produces": "kontekst: mapa repozytorium, kontrakt, sąsiednie moduły",
+      "next": [
+        "plan"
+      ]
+    },
+    {
+      "id": "plan",
+      "role": "coordinator",
+      "consumes": "kontekst",
+      "produces": "lista zadań o rozmiarze najwyżej jednego pakietu",
+      "next": [
+        "wykonanie"
+      ]
+    },
+    {
+      "id": "wykonanie",
+      "role": "builder",
+      "produces": "zmiana w kodzie wraz z testem regresyjnym",
+      "next": [
+        "kontrola"
+      ]
+    },
+    {
+      "id": "kontrola",
+      "role": "reviewer",
+      "gate": true,
+      "consumes": "sama zmiana, bez uzasadnienia wykonawcy",
+      "onReject": "wykonanie",
+      "next": [
+        "akceptacja"
+      ]
+    },
+    {
+      "id": "akceptacja",
+      "role": "coordinator",
+      "terminal": true,
+      "acceptance": [
+        "task gen:check",
+        "task tauri:check",
+        "task go:build",
+        "task go:vet",
+        "task go:test",
+        "task client:types",
+        "task client:test",
+        "task standard"
+      ]
+    }
+  ],
+  "stop": [
+    {
+      "when": "acceptancePassed",
+      "action": "finish"
+    },
+    {
+      "when": "budgetExhausted",
+      "action": "halt"
+    },
+    {
+      "when": "noProgress",
+      "threshold": 3,
+      "action": "escalate"
+    },
+    {
+      "when": "repeatedFailure",
+      "threshold": 5,
+      "action": "escalate"
+    },
+    {
+      "when": "wallClockExceeded",
+      "action": "halt"
+    }
+  ],
+  "escalation": {
+    "to": "human",
+    "channel": "wpis w dzienniku audytowym oraz powiadomienie",
+    "includes": "ostatnie zadanie, próg, który został przekroczony, i wynik ostatniej bramki akceptacji"
+  },
+  "audit": {
+    "appendOnly": true,
+    "path": "var/audit/",
+    "records": [
+      "zadanie",
+      "rola",
+      "model",
+      "zużycie tokenów",
+      "wynik bramki",
+      "zmienione pliki"
+    ]
+  },
+  "start": "rozpoznanie"
+}
