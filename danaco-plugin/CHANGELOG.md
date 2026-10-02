@@ -5,6 +5,9 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## 3.3.1 (02.10.2026)
+- Odwołania do poleceń `danaco-praca` zaktualizowane do wersji 5.0.0 (`/praca` zamiast paczki `pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.
+
 ## 3.3.0 (29.09.2026)
 - Serwer MCP danaco-programy: katalog wymiany na nexusie liczony od konta, jako które loguje się SSH (`id -un` na nexusie) - usługi na kontach systemowych mogą korzystać z `uruchom`.
 

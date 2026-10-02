@@ -1,22 +1,18 @@
 {
   "name": "danaco-praca",
-  "version": "4.7.0",
-  "description": "Tryb ciągłej pracy Danaco: komenda /pracuj każe hookowi założyć znacznik zlecenia, po czym hooki odbierają modelowi zakończenie tury, zadawanie pytań, czekanie na pierwszym planie i chowanie się za uruchomionym procesem, a zlecenie zamyka wyłącznie użytkownik komendą /stop. Dokłada blokadę podagentów (/blokada, /blokada-stop), blokadę pracy maszynowej (/stop-skrypt, /skrypt) i dziennik ciszy z wywołaniami, które odcinają użytkownika.",
+  "version": "5.0.0",
+  "description": "Polecenia właściciela sterujące trybem pracy agenta, egzekwowane hookami: praca ciągła (/praca, /koniec-pracy) z blokadą zakończenia tury i czekania oraz blokady przełączane parami (/bez-bash, /bez-python, /bez-masowych, /reczne-pisanie, /bez-sleep, /bez-podagentow, /sudo-nie i ich zwolnienia), podgląd /tryb. Stan osobny na sesję, poza zasięgiem modelu, z dziennikiem. Do tego straż sekretów i straż dysku systemowego Danaco.",
   "author": {
     "name": "Danaco Group"
   },
   "license": "SEE LICENSE IN LICENSE",
   "keywords": [
     "danaco",
-    "tryb-ciaglej-pracy",
-    "pracuj",
-    "stop",
-    "blokada-podagentow",
-    "blokada-pracy-maszynowej",
+    "tryb-pracy",
+    "praca-ciagla",
+    "blokady",
     "hooki",
-    "straznik",
-    "praca-w-tle",
-    "python",
-    "straz-sekretow"
+    "straz-sekretow",
+    "straz-dysku"
   ]
 }

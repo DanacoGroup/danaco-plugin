@@ -1,46 +1,24 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" sekrety",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" pretool",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" prompt",
-            "timeout": 30
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" prompt",
+            "timeout": 15
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "^(Bash|PowerShell)$",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" kontrola",
-            "timeout": 20
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" narzedzie",
+            "timeout": 15
           }
         ]
       }
@@ -50,8 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" stop",
-            "timeout": 30
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" stop",
+            "timeout": 15
           }
         ]
       }
@@ -61,19 +39,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" sesja",
-            "timeout": 15
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" sesja",
+            "timeout": 10
           }
         ]
       }
     ],
-    "PreCompact": [
+    "SubagentStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/straznik.sh\" kompakt",
-            "timeout": 15
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/hak.sh\" sesja",
+            "timeout": 10
           }
         ]
       }

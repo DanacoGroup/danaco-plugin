@@ -10,9 +10,6 @@ __pycache__/
 .venv/
 venv/
 
-# Katalog roboczy znacznika trybu ciągłej pracy - nigdy nie wchodzi do repozytorium
-.danaco/
-
 # Pliki tymczasowe i kopie zapasowe
 *.tmp
 *.temp

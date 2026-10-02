@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+"""Hooki danaco-praca 5: jedno wejście dla wszystkich zdarzeń wtyczki.
+
+Użycie (z hooks/hak.sh): hak.py <tryb> < zdarzenie.json
+  prompt      UserPromptSubmit / UserPromptExpansion — polecenia właściciela, zapis stanu
+  narzedzie   PreToolUse — ochrona stanu, blokady sesji, straż sekretów i dysku
+  stop        Stop — tryb pracy ciągłej (tylko agent główny)
+  sesja       SessionStart i SubagentStart — przypomnienie aktywnych blokad
+
+Zasada bezpieczeństwa: usterka hooka nie może zamknąć sesji (każdy wyjątek kończy się
+kodem 0 bez decyzji), a decyzje idą wyłącznie przez JSON na stdout.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import traceback
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import polecenia as P  # noqa: E402
+import reguly as R  # noqa: E402
+import stan as S  # noqa: E402
+
+LIMIT_PETLI = int(os.environ.get("DANACO_PRACA_LIMIT_PETLI", "3") or 3)
+LIMIT_PLIKOW = int(os.environ.get("DANACO_PRACA_LIMIT_PLIKOW", "1") or 1)
+NAZWA_WTYCZKI = "danaco-praca"
+
+
+def wypisz(dane: dict) -> None:
+    json.dump(dane, sys.stdout, ensure_ascii=False)
+
+
+# --- UserPromptSubmit -----------------------------------------------------------------------------
+
+ZASADY_PRACY = (
+    "Tryb pracy ciągłej włączył właściciel. Do jego polecenia /koniec-pracy nie kończysz tury: "
+    "hook Stop odrzuca każdą próbę zakończenia. Nie czekasz i nie śpisz (sleep, pętle oczekiwania, "
+    "ScheduleWakeup, CronCreate, blokujący odbiór wyniku są odrzucane). Wolno Ci uruchamiać procesy "
+    "i agentów w tle oraz stawiać monitoring (także narzędziem Monitor), ale sam cały czas pracujesz dalej: weryfikujesz, "
+    "testujesz, poprawiasz, dokumentujesz i bierzesz kolejne części zlecenia. Narzędzia i miejsca "
+    "zapisu nie są ograniczone; obowiązują tylko zasady serwera (kosz zamiast kasowania, straż "
+    "pakietów i dysku, sekrety). Trybu nie zmieniasz sam — przełącza go wyłącznie właściciel."
+)
+
+
+def obsluz_polecenia(zdarzenie: dict) -> int:
+    tekst = str(zdarzenie.get("prompt") or "")
+    if zdarzenie.get("hook_event_name") == "UserPromptExpansion":
+        nazwa = str(zdarzenie.get("command_name") or zdarzenie.get("skill_name") or "").split(":")[-1].lstrip("/")
+        argumenty = str(zdarzenie.get("command_args") or zdarzenie.get("arguments") or "")
+        if nazwa in P.POLECENIA and not P.rozpoznaj(tekst)[0]:
+            tekst = f"/{nazwa} {argumenty}".strip()
+    lista, reszta = P.rozpoznaj(tekst)
+    sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
+    magazyn = S.Magazyn()
+    if not lista:
+        # Zwykła wiadomość właściciela zaczyna nową turę: liczniki pętli od zera.
+        stan = magazyn.wczytaj(sesja)
+        if stan["praca"]["wlaczona"] and any(stan["praca"]["bez_narzedzi"].values()):
+            with magazyn.blokada():
+                stan = magazyn.wczytaj(sesja)
+                stan["praca"]["bez_narzedzi"] = {}
+                magazyn.zapisz(stan)
+        return 0
+    zmiany: list[str] = []
+    with magazyn.blokada():
+        stan = magazyn.wczytaj(sesja)
+        for polecenie in lista:
+            cel = P.POLECENIA[polecenie]
+            if cel is None:
+                continue
+            klucz, wartosc = cel
+            if klucz == "praca":
+                stan["praca"]["wlaczona"] = wartosc
+                stan["praca"]["bez_narzedzi"] = {}
+                if wartosc:
+                    if reszta or not stan["praca"].get("od"):
+                        stan["praca"]["zlecenie"] = reszta[:4000]
+                    stan["praca"]["od"] = stan["praca"].get("od") or S.teraz()
+                else:
+                    stan["praca"]["od"] = None
+                    stan["praca"]["zlecenie"] = ""
+            else:
+                stan["blokady"][klucz] = wartosc
+            zmiany.append(polecenie)
+        if zmiany:
+            magazyn.zapisz(stan, {"zdarzenie": "polecenie", "polecenia": zmiany,
+                                  "zrodlo": zdarzenie.get("hook_event_name") or "UserPromptSubmit",
+                                  "cwd": zdarzenie.get("cwd")})
+    opis = S.opis_stanu(stan)
+    if lista == ["tryb"] and not reszta:
+        # Sam podgląd: tabela dla właściciela bez angażowania modelu.
+        wypisz({"decision": "block", "reason": opis})
+        return 0
+    kontekst = [f"[{NAZWA_WTYCZKI}] Właściciel wydał polecenia: " + ", ".join("/" + p for p in lista) + ". Hook zapisał stan:", opis]
+    if "praca" in zmiany and stan["praca"]["wlaczona"]:
+        kontekst += ["", ZASADY_PRACY]
+        if stan["praca"]["zlecenie"]:
+            kontekst += ["", "Zlecenie: " + stan["praca"]["zlecenie"]]
+    if "koniec-pracy" in zmiany:
+        kontekst += ["", "Tryb pracy ciągłej jest wyłączony: wolno zakończyć turę krótkim raportem. Pozostałe blokady obowiązują bez zmian."]
+    else:
+        kontekst += ["", "Stanu nie zmieniasz i nie komentujesz go: przyjmij go i pracuj dalej."]
+    wypisz({
+        "systemMessage": f"{NAZWA_WTYCZKI}: " + ", ".join("/" + p for p in lista) + " — zapisano.\n" + opis,
+        "hookSpecificOutput": {"hookEventName": zdarzenie.get("hook_event_name") or "UserPromptSubmit",
+                               "additionalContext": "\n".join(kontekst)},
+    })
+    return 0
+
+
+# --- PreToolUse -----------------------------------------------------------------------------------
+
+def zwiazane_ze_stanem(tekst: str, katalog: str) -> bool:
+    if not tekst:
+        return False
+    dane = os.path.dirname(katalog)
+    znaczniki = [katalog, "CLAUDE_PLUGIN_DATA", "DANACO_PRACA_STAN"]
+    if os.path.basename(dane).startswith(NAZWA_WTYCZKI):
+        znaczniki.append(dane)
+    if any(z and z in tekst for z in znaczniki):
+        return True
+    # Katalog danych tej wtyczki pod dowolną nazwą instalacji, także maską (danaco-p*).
+    return bool(re.search(r"plugins/data/(danaco-praca|[^/\s\"']*[*?\[])", tekst))
+
+
+SCIEZKI_PLIKOWE = ("file_path", "notebook_path", "path")
+NARZEDZIA_PLIKOWE = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+
+def chroni_mechanizm(narzedzie: str, wejscie: dict, powloka: str | None, surowe: str, cwd: str = "") -> str | None:
+    """Przy aktywnym trybie lub blokadzie: zakaz wyłączania wtyczki i hooków."""
+    korzen = os.path.realpath(os.environ.get("CLAUDE_PLUGIN_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    konfiguracja = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    powod = ("Dopóki działa tryb lub blokada danaco-praca, nie zmieniasz wtyczki, jej hooków ani "
+             "ustawień Claude Code ({}). Tryby przełącza wyłącznie właściciel")
+    if "disableAllHooks" in surowe:
+        return powod.format("disableAllHooks")
+    chronione = re.compile(r"(^|/)\.claude/(settings(\.local)?\.json|plugins/)|managed-settings|/etc/claude-code")
+    if narzedzie in NARZEDZIA_PLIKOWE:
+        for pole in SCIEZKI_PLIKOWE:
+            sciezka = str(wejscie.get(pole) or "")
+            if not sciezka:
+                continue
+            pelna = os.path.realpath(os.path.join(cwd or "/", os.path.expanduser(sciezka)))
+            konf = os.path.realpath(konfiguracja)
+            if (pelna.startswith(korzen + os.sep) or chronione.search(pelna) or pelna.startswith(konf + "/plugins/")
+                    or pelna in (konf + "/settings.json", konf + "/settings.local.json")):
+                return powod.format(sciezka)
+    if powloka:
+        for r, _, _ in R.polecenia(powloka):
+            if R.nazwa(r) in R.CLAUDE and len(r) > 2 and r[1] in ("plugin", "plugins") and r[2] in ("disable", "uninstall", "remove", "rm", "marketplace"):
+                return powod.format(" ".join(r[:3]))
+        if (korzen in powloka or chronione.search(powloka) or os.path.realpath(konfiguracja) + "/settings" in powloka) and R.tekst_zapisuje(powloka):
+            return powod.format("zapis w plikach wtyczki lub ustawień")
+    return None
+
+
+def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str] | None:
+    """Decyzja wtyczki dla wywołania narzędzia: ('deny'|'ask', powód) albo None."""
+    narzedzie = str(zdarzenie.get("tool_name") or "")
+    wejscie = zdarzenie.get("tool_input") or {}
+    if not isinstance(wejscie, dict):
+        wejscie = {}
+    cwd = str(zdarzenie.get("cwd") or "")
+    surowe = json.dumps(wejscie, ensure_ascii=False)
+    powloka = R.polecenie_powloki(narzedzie, wejscie)
+    blokady = stan["blokady"]
+    praca = stan["praca"]["wlaczona"]
+
+    # 1. Stan trybów jest poza zasięgiem modelu — zawsze.
+    if zwiazane_ze_stanem(surowe, katalog):
+        return ("deny", "Stan trybów danaco-praca jest poza zasięgiem modelu: nie czytasz go i nie zmieniasz. "
+                        "Stan pokazuje właścicielowi polecenie /tryb")
+    # 2. Polecenia właściciela przełącza tylko właściciel: ani narzędzie Skill, ani podrzucony prompt.
+    if narzedzie in ("Skill", "SlashCommand"):
+        nazwa = str(wejscie.get("skill") or wejscie.get("command") or wejscie.get("name") or "")
+        nazwa = nazwa.strip().lstrip("/").split()[0].split(":")[-1] if nazwa.strip() else ""
+        if nazwa in P.POLECENIA:
+            return ("deny", f"/{nazwa} przełącza wyłącznie właściciel, wpisując polecenie na czacie")
+    if powloka is not None or re.search(r"(?i)send|message|notif|terminal|prompt|slash|push", narzedzie):
+        if P.TOKEN.search(surowe if powloka is None else powloka):
+            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /z-…, /bez-…, /sudo-…, /tryb) "
+                            "wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
+    if S.aktywne(stan):
+        wynik = chroni_mechanizm(narzedzie, wejscie, powloka, surowe, cwd)
+        if wynik:
+            return ("deny", wynik)
+        if powloka:
+            wynik = R.wznowienie_sesji(powloka)
+            if wynik:
+                return ("deny", wynik)
+    # 3. Blokady sesji.
+    if blokady["bash"] and (narzedzie in ("Bash", "PowerShell", "Monitor") or (powloka is not None and narzedzie.startswith("mcp__"))):
+        return ("deny", f"Narzędzie {narzedzie} jest zablokowane poleceniem właściciela /bez-bash. "
+                        "Pracuj narzędziami Read, Grep, Glob, Edit i Write")
+    if blokady["podagenci"]:
+        wynik = R.blokada_podagentow_narzedzie(narzedzie) or (R.blokada_podagentow_powloka(powloka) if powloka else None)
+        if wynik:
+            return ("deny", wynik)
+    if praca or blokady["sleep"]:
+        scisle = blokady["sleep"]
+        wynik = (R.blokada_czekania_narzedzie(narzedzie, wejscie, scisle)
+                 or (R.blokada_czekania(powloka, wejscie, scisle) if powloka and narzedzie != "Monitor" else None))
+        if wynik:
+            zrodlo = "/praca" if praca and not blokady["sleep"] else "/bez-sleep"
+            return ("deny", f"{wynik} [{zrodlo}]")
+    if blokady["python"]:
+        wynik = R.blokada_python_plik(narzedzie, wejscie) or (R.blokada_python(powloka, cwd) if powloka else None)
+        if wynik:
+            return ("deny", wynik)
+    if powloka:
+        if blokady["sudo"]:
+            wynik = R.blokada_sudo(powloka)
+            if wynik:
+                return ("deny", wynik)
+        if blokady["masowe"]:
+            wynik = R.blokada_masowa(powloka, cwd, LIMIT_PLIKOW)
+            if wynik:
+                return ("deny", wynik)
+        if blokady["reczne"]:
+            wynik = R.blokada_reczna(powloka, cwd)
+            if wynik:
+                return ("deny", wynik)
+    # 4. Twarde zasady serwera: sekrety (zawsze) i dysk systemowy (gdy nie robi tego hook konta).
+    return twarde_zasady(narzedzie, wejscie, cwd)
+
+
+def straz_dysku_systemowa() -> bool:
+    """Czy straż dysku działa już jako hook konta albo hook zarządzany (bez dublowania)."""
+    wymuszenie = os.environ.get("DANACO_PRACA_STRAZ_DYSKU", "")
+    if wymuszenie in ("wtyczka", "zawsze"):
+        return False
+    if wymuszenie in ("system", "nigdy"):
+        return True
+    konfiguracja = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    for sciezka in (os.path.join(konfiguracja, "settings.json"), "/etc/claude-code/managed-settings.json"):
+        try:
+            with open(sciezka, encoding="utf-8") as plik:
+                if "danaco-straz-dysku-hook" in plik.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def twarde_zasady(narzedzie: str, wejscie: dict, cwd: str) -> tuple[str, str] | None:
+    import straz_dysku
+    import straz_sekretow
+
+    najostrzejsza = None
+    if narzedzie == "Bash":
+        straz_sekretow.KATALOG["cwd"] = cwd
+        wynik = straz_sekretow.ocen(str(wejscie.get("command") or ""))
+        if wynik:
+            wynik = (wynik[0], f"Straż sekretów Danaco: {wynik[1]}")
+            if wynik[0] == "deny":
+                return wynik
+            najostrzejsza = wynik
+    if narzedzie in ("Bash", "Write") and not straz_dysku_systemowa():
+        straz_dysku.KATALOG["cwd"] = cwd
+        if narzedzie == "Bash":
+            wynik = straz_dysku.ocen(str(wejscie.get("command") or ""))
+        else:
+            wynik = straz_dysku.ocen_zapis_pliku(str(wejscie.get("file_path") or ""))
+        if wynik:
+            return (wynik[0], f"Straż dysku systemowego Danaco: {wynik[1]}")
+    return najostrzejsza
+
+
+def obsluz_narzedzie(zdarzenie: dict) -> int:
+    sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
+    magazyn = S.Magazyn()
+    stan = magazyn.wczytaj(sesja)
+    if stan["praca"]["wlaczona"] and not zdarzenie.get("agent_id") and stan["praca"]["bez_narzedzi"].get("glowny"):
+        # Wywołanie narzędzia przez agenta głównego to praca: licznik prób zakończenia od zera.
+        with magazyn.blokada():
+            stan = magazyn.wczytaj(sesja)
+            stan["praca"]["bez_narzedzi"].pop("glowny", None)
+            magazyn.zapisz(stan)
+    wynik = ocen_narzedzie(zdarzenie, stan, magazyn.katalog)
+    if not wynik:
+        return 0
+    decyzja, powod = wynik
+    if S.aktywne(stan) or decyzja == "deny":
+        try:
+            magazyn.dopisz({"zdarzenie": "odmowa" if decyzja == "deny" else "pytanie", "sesja": sesja,
+                            "narzedzie": zdarzenie.get("tool_name"), "agent": zdarzenie.get("agent_id"),
+                            "powod": powod[:300]})
+        except OSError:
+            pass
+    wypisz({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decyzja,
+                                   "permissionDecisionReason": powod + "."}})
+    return 0
+
+
+# --- Stop -----------------------------------------------------------------------------------------
+
+def obsluz_stop(zdarzenie: dict) -> int:
+    """Praca ciągła wiąże wyłącznie agenta głównego: podagent oddaje wynik od razu
+    (decyzja właściciela z 2026-10-02), dlatego hook nie jest rejestrowany dla SubagentStop."""
+    if zdarzenie.get("hook_event_name") == "SubagentStop" or zdarzenie.get("agent_id"):
+        return 0
+    sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
+    magazyn = S.Magazyn()
+    if not magazyn.wczytaj(sesja)["praca"]["wlaczona"]:
+        return 0
+    with magazyn.blokada():
+        stan = magazyn.wczytaj(sesja)
+        if not stan["praca"]["wlaczona"]:
+            return 0
+        liczniki = stan["praca"]["bez_narzedzi"]
+        proby = int(liczniki.get("glowny", 0))
+        if proby >= LIMIT_PETLI:
+            # Bezpiecznik: kolejne próby zakończenia bez żadnego wywołania narzędzia.
+            liczniki.pop("glowny", None)
+            magazyn.zapisz(stan, None)
+            magazyn.dopisz({"zdarzenie": "bezpiecznik-petli", "sesja": sesja, "proby": proby})
+            wypisz({"systemMessage": (
+                f"{NAZWA_WTYCZKI}: agent {proby + 1} razy z rzędu próbował zakończyć turę bez wywołania "
+                "żadnego narzędzia, więc bezpiecznik przerwał pętlę i oddał Ci głos. Tryb /praca jest "
+                "nadal włączony. Napisz, co dalej, albo wyłącz tryb poleceniem /koniec-pracy.")})
+            return 0
+        liczniki["glowny"] = proby + 1
+        magazyn.zapisz(stan, None)
+    zlecenie = (stan["praca"].get("zlecenie") or "").strip()
+    powod = ("Tryb pracy ciągłej (/praca) jest włączony przez właściciela — nie kończ tury. Kontynuuj zadanie"
+             + (f": {zlecenie[:1500]}" if zlecenie else "")
+             + ". Weź następny krok: sprawdź wyniki procesów w tle, zweryfikuj i przetestuj zrobione części, "
+             "popraw błędy, uzupełnij dokumentację albo podejmij kolejną część zlecenia. Nie czekaj i nie "
+             "pytaj; tryb zwalnia wyłącznie właściciel poleceniem /koniec-pracy.")
+    wypisz({"decision": "block", "reason": powod})
+    return 0
+
+
+# --- SessionStart / SubagentStart -----------------------------------------------------------------
+
+def obsluz_sesje(zdarzenie: dict) -> int:
+    sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
+    stan = S.Magazyn().wczytaj(sesja)
+    if not S.aktywne(stan):
+        return 0
+    tekst = [f"[{NAZWA_WTYCZKI}] W tej sesji obowiązują tryby ustawione przez właściciela:", S.opis_stanu(stan)]
+    if stan["praca"]["wlaczona"] and zdarzenie.get("hook_event_name") == "SubagentStart":
+        tekst += ["", "Tryb pracy ciągłej wiąże agenta głównego. Ty jako podagent wykonujesz zlecone zadanie "
+                      "i oddajesz wynik normalnie; nie czekasz i nie usypiasz (sleep, wait, ScheduleWakeup)."]
+    elif stan["praca"]["wlaczona"]:
+        tekst += ["", ZASADY_PRACY]
+        if stan["praca"]["zlecenie"]:
+            tekst += ["Zlecenie: " + stan["praca"]["zlecenie"]]
+    wypisz({"hookSpecificOutput": {"hookEventName": zdarzenie.get("hook_event_name") or "SessionStart",
+                                   "additionalContext": "\n".join(tekst)}})
+    return 0
+
+
+TRYBY = {"prompt": obsluz_polecenia, "narzedzie": obsluz_narzedzie, "stop": obsluz_stop, "sesja": obsluz_sesje}
+
+
+def main(argv: list[str]) -> int:
+    tryb = argv[1] if len(argv) > 1 else ""
+    obsluga = TRYBY.get(tryb)
+    if obsluga is None:
+        print(f"[{NAZWA_WTYCZKI}] nieznany tryb hooka: {tryb!r}", file=sys.stderr)
+        return 0
+    try:
+        zdarzenie = json.load(sys.stdin)
+        if not isinstance(zdarzenie, dict):
+            return 0
+        return obsluga(zdarzenie)
+    except Exception:  # noqa: BLE001 — usterka hooka nie może zamknąć sesji
+        if os.environ.get("DANACO_PRACA_DEBUG"):
+            traceback.print_exc()
+        else:
+            print(f"[{NAZWA_WTYCZKI}] błąd hooka {tryb}: {sys.exc_info()[1]!r}", file=sys.stderr)
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

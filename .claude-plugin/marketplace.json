@@ -4,19 +4,19 @@
     "name": "Danaco Group"
   },
   "metadata": {
-    "description": "Wtyczki Danaco Group dla wszystkich serwerów i kont: standardy inżynierskie z serwerem MCP katalogu programów (danaco-plugin) oraz tryb ciągłej pracy ze strażą sekretów (danaco-praca)."
+    "description": "Wtyczki Danaco Group dla wszystkich serwerów i kont: standardy inżynierskie z serwerem MCP katalogu programów (danaco-plugin) oraz polecenia trybu pracy agenta ze strażą sekretów i dysku (danaco-praca)."
   },
   "plugins": [
     {
       "name": "danaco-praca",
       "source": "./danaco-praca",
-      "version": "4.7.0",
-      "description": "Tryb ciągłej pracy Danaco: komenda /pracuj każe hookowi założyć znacznik zlecenia, po czym hooki odbierają modelowi zakończenie tury, zadawanie pytań, czekanie na pierwszym planie i chowanie się za uruchomionym procesem, a zlecenie zamyka wyłącznie użytkownik komendą /stop. Dokłada blokadę podagentów (/blokada, /blokada-stop), blokadę pracy maszynowej (/stop-skrypt, /skrypt) i dziennik ciszy z wywołaniami, które odcinają użytkownika."
+      "version": "5.0.0",
+      "description": "Polecenia właściciela sterujące trybem pracy agenta, egzekwowane hookami: praca ciągła (/praca, /koniec-pracy) z blokadą zakończenia tury i czekania oraz blokady przełączane parami (/bez-bash, /bez-python, /bez-masowych, /reczne-pisanie, /bez-sleep, /bez-podagentow, /sudo-nie i ich zwolnienia), podgląd /tryb. Stan osobny na sesję, poza zasięgiem modelu, z dziennikiem. Do tego straż sekretów i straż dysku systemowego Danaco."
     },
     {
       "name": "danaco-plugin",
       "source": "./danaco-plugin",
-      "version": "3.3.0",
+      "version": "3.3.1",
       "description": "Standardy inżynierskie Danaco w 15 paczkach wiedzy i umiejętności: architektura, kodowanie, kontrola jakości, UI/UX, dokumentacja, kontrakt i nazewnictwo, wraz z maszynowymi walidatorami dyscypliny i nazewnictwa, hookiem kontroli po zapisie pliku oraz serwerem MCP katalogu programów danaco-nexus (tryb lokalny na nexusie, zdalny na pozostałych serwerach)."
     }
   ]

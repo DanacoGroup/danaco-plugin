@@ -310,8 +310,9 @@ w każdej z paczek, które się do nich odwołują.
 
 ## 9. Podział na dwa pluginy
 
-Od wersji 3.0.0 mechanizm trybu ciągłej pracy (`/pracuj`, `/stop`, `/blokada`) prowadzi
-osobny plugin `danaco-praca`. Ten plugin zawiera wyłącznie warstwę wiedzy i umiejętności
+Od wersji 3.0.0 mechanizm trybu ciągłej pracy prowadzi osobny plugin `danaco-praca`
+(od jego wersji 5.0.0: polecenia `/praca`, `/koniec-pracy`, blokady `/bez-…`/`/z-…`,
+`/sudo-nie`/`/sudo-tak` i `/tryb`). Ten plugin zawiera wyłącznie warstwę wiedzy i umiejętności
 oraz maszynowe walidatory.
 
 Oba pluginy są niezależne: `danaco-plugin` działa w pełni bez `danaco-praca` i odwrotnie.
@@ -319,10 +320,9 @@ Instaluje się je osobno i wersjonuje osobno.
 
 Przy obu zainstalowanych naraz hooki nie kolidują. Każdy plugin rejestruje własny
 `hooks.json`, a Claude Code sumuje wpisy z obu: `danaco-plugin` obsługuje `PostToolUse`
-z matcherem `^(Write|Edit|MultiEdit|NotebookEdit)$`, `danaco-praca` — `PostToolUse`
-z matcherem `^(Bash|PowerShell)$` oraz pozostałe zdarzenia własnego mechanizmu. Matchery
-`PostToolUse` obu pluginów są rozłączne, więc żadne narzędzie nie trafia do dwóch hooków
-naraz.
+z matcherem `^(Write|Edit|MultiEdit|NotebookEdit)$`, a `danaco-praca` (5.0.0) nie
+rejestruje `PostToolUse` wcale — działa w `UserPromptSubmit`, `PreToolUse`, `Stop`,
+`SessionStart` i `SubagentStart`.
 
 ---
 

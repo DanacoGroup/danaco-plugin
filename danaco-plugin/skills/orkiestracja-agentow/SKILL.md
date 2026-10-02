@@ -9,7 +9,7 @@ description: >
   role i budżety, a także gdy pada „pętla się kręci i nic nie robi”, „modele zgadzają się ze
   sobą, a wynik jest zły”, „skąd wiadomo, że skończyła”, „ile to będzie kosztować”, „jak to
   zatrzymać” albo „praca 24/7 bez człowieka”. Widoczność danych dla toru AI rozstrzyga
-  `macierz-trybow-sesji`; ciągła praca jednego modelu na czacie to paczka `pracuj` pluginu
+  `macierz-trybow-sesji`; ciągła praca jednego modelu na czacie to polecenie `/praca` pluginu
   `danaco-praca`, jeśli jest zainstalowany, nie ta paczka.
 ---
 

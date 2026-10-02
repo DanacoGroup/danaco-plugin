@@ -9,6 +9,59 @@ wersji 3.0.0 przez wydzielenie mechanizmu trybu ciągłej pracy z pluginu
 `danaco-plugin`; wpisy poniżej wersji 3.0.0 opisują ten mechanizm w jego dawnym
 miejscu i zostały przeniesione bez zmian.
 
+## [5.0.0] — 2026-10-02
+
+Przebudowa od podstaw: wtyczka daje właścicielowi polecenia „/” sterujące trybem pracy
+agenta, egzekwowane hookami. Zmiana niezgodna wstecz — dawne polecenia i pliki stanu nie
+działają. Sprawdzane na kliencie Claude Code 2.1.287 (próba na żywo z atrapą API).
+
+### Dodane
+
+- 17 poleceń (skille z `disable-model-invocation: true`): `/praca` ↔ `/koniec-pracy`,
+  `/bez-bash` ↔ `/z-bash`, `/bez-python` ↔ `/z-python`, `/bez-masowych` ↔ `/z-masowymi`,
+  `/reczne-pisanie` ↔ `/z-skryptami`, `/bez-sleep` ↔ `/z-sleep`,
+  `/bez-podagentow` ↔ `/z-podagentami`, `/sudo-nie` ↔ `/sudo-tak` oraz `/tryb`.
+- `scripts/stan.py` — stan osobny na sesję w `${CLAUDE_PLUGIN_DATA}/stan`, podpisany
+  HMAC-SHA256, z dziennikiem `dziennik.jsonl` (każda zmiana z podpisaną migawką, odmowy,
+  bezpiecznik pętli). Zmieniony lub skasowany plik stanu wraca z dziennika.
+- `scripts/reguly.py` — reguły blokad: Python, praca masowa, pisanie ręczne, czekanie,
+  podagenci, sudo; rozbiór `bash -c`, `ssh '…'`, `$(…)`, `find -exec`, `xargs`, heredoców
+  i treści uruchamianych skryptów.
+- `scripts/hak.py` + `hooks/hak.sh` — jedno wejście dla `UserPromptSubmit`, `PreToolUse`,
+  `Stop`, `SessionStart`, `SubagentStart`.
+- Praca ciągła agenta głównego: `Stop` z `decision: block`; bezpiecznik pętli — po trzech
+  kolejnych próbach zakończenia bez wywołania narzędzia czwarta przechodzi z komunikatem
+  dla właściciela (`DANACO_PRACA_LIMIT_PETLI`). Podagent oddaje wynik od razu
+  (`SubagentStop` nie jest blokowany). W `/praca` odrzucane jest czekanie na pierwszym
+  planie, `ScheduleWakeup`, `CronCreate` i blokujący odbiór wyniku; `Monitor` i polecenia
+  w tle przechodzą. Ściślejsze `/bez-sleep` odrzuca też czekanie w tle i `Monitor`.
+- Ochrona przełączania: odmowa dostępu do katalogu stanu, wywołania poleceń wtyczki
+  narzędziem `Skill`, podrzucenia polecenia w powłoce lub wiadomości, `claude --resume`
+  z wnętrza sesji, zmiany plików wtyczki i `settings.json` oraz `disableAllHooks`.
+- `scripts/straz_dysku.py` — straż dysku systemowego z gałęzi `straz-dysku-systemowego`
+  (48 przypadków `--test`), odnośnik do `/etc/danaco/zasady/serwer.md`. Milczy, gdy
+  konto lub ustawienia zarządzane rejestrują już `danaco-straz-dysku-hook`
+  (`DANACO_PRACA_STRAZ_DYSKU=wtyczka|system` rozstrzyga ręcznie).
+- `tests/test_hooki.py` (38 testów, kilkaset przypadków), `tests/proba_na_zywo.py`
+  i `tests/atrapa_api.py`.
+
+### Usunięte
+
+- Polecenia `/pracuj`, `/stop`, `/blokada`, `/blokada-stop`, `/stop-skrypt`, `/skrypt`
+  (zastępują je kolejno `/praca`, `/koniec-pracy`, `/bez-podagentow`, `/z-podagentami`,
+  `/bez-masowych`, `/z-masowymi`).
+- Ograniczenie trybu pracy do katalogu projektu (zakres zapisów strażnika) i wszystkie
+  ograniczenia narzędzi w trybie pracy: wymóg pracy w tle, lista „wglądu” na pierwszym
+  planie, bramka ciszy, bramka sprawdzeń stanu, wykrywanie powtórzeń, zakaz pytań,
+  zakaz zatrzymywania zadań w tle, zakaz narzędzi wysyłających wiadomość.
+- Znacznik `.danaco/zadania/<sesja>.json` w katalogu projektu i kopia `~/.danaco-kopie`
+  (stan jest w danych wtyczki).
+- Hooki `PostToolUse` (odtwarzanie skasowanego znacznika — zbędne, stan jest poza
+  zasięgiem modelu) i `PreCompact` (zapis stanu zlecenia — stan przeżywa kompakcję sam,
+  a `SessionStart` przypomina go po niej; katalog sesji prowadzi `danaco-sesja-hook`).
+- `scripts/straznik.py`, `znacznik.py`, `zadanie.py`, `sesja.py`, `hooks/straznik.sh`,
+  `tests/test_straznik.py` i 12 nieprzechodzących testów parytetu z 4.7.0.
+
 ## [4.7.0] — 2026-09-29
 
 Wydanie przywraca hooki w samym pluginie. Paczki 4.6.0 rozprowadzone na serwery
