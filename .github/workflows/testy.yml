@@ -1,0 +1,47 @@
+name: Testy i walidacja
+
+# Testy obu wtyczek (biblioteka standardowa Pythona, bez zależności) oraz walidacja
+# manifestów klientem Claude Code. Ustalenie #11 z przeglądu bezpieczeństwa danaco-praca.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testy:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Testy danaco-praca (unittest)
+        working-directory: danaco-praca
+        run: python3 -m unittest -v tests.test_hooki
+
+      - name: Wbudowane przypadki straży danaco-praca
+        working-directory: danaco-praca
+        run: |
+          python3 scripts/straz_sekretow.py --test
+          python3 scripts/straz_dysku.py --test
+
+      - name: Testy danaco-plugin (unittest)
+        working-directory: danaco-plugin
+        run: python3 -m unittest discover -s tests -t tests -p "test_*.py"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalacja Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Walidacja wtyczek (plugin validate --strict)
+        run: |
+          claude plugin validate --strict danaco-praca
+          claude plugin validate --strict danaco-plugin

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Straż sekretów i operacji nieodwracalnych — hook PreToolUse dla narzędzia Bash (Danaco).
+"""Straż sekretów i operacji nieodwracalnych — hook PreToolUse (Danaco).
 
 Zasady właściciela: sekrety leżą wyłącznie w plikach 600 i nigdy nie trafiają na ekran ani
 do rozmowy; operacje, których nie da się cofnąć (wymuszony push, przepisanie historii,
@@ -449,11 +449,28 @@ def main() -> int:
         return test()
     try:
         zdarzenie = json.load(sys.stdin)
-        if zdarzenie.get("tool_name") != "Bash":
-            return 0
-        polecenie = str((zdarzenie.get("tool_input") or {}).get("command") or "")
+        narzedzie = str(zdarzenie.get("tool_name") or "")
+        wejscie = zdarzenie.get("tool_input") or {}
+        if not isinstance(wejscie, dict):
+            wejscie = {}
         KATALOG["cwd"] = str(zdarzenie.get("cwd") or "")
-        wynik = ocen(polecenie)
+        polecenie = None
+        if narzedzie in ("Bash", "PowerShell", "Monitor"):
+            polecenie = str(wejscie.get("command") or "")
+        elif narzedzie.startswith("mcp__"):
+            for pole in ("command", "cmd", "script", "polecenie"):
+                if isinstance(wejscie.get(pole), str):
+                    polecenie = wejscie[pole]
+                    break
+        if polecenie is not None:
+            wynik = ocen(polecenie)
+        elif narzedzie in ("Read", "NotebookRead"):
+            sciezka = str(wejscie.get("file_path") or wejscie.get("notebook_path") or wejscie.get("path") or "")
+            wynik = (("deny", f"„{narzedzie} {sciezka}” wypisałoby sekret do rozmowy. Sekrety zostają "
+                      "w plikach 600; sprawdź obecność klucza bez wartości")
+                     if sciezka and sciezka_sekretu(sciezka) else None)
+        else:
+            return 0
     except Exception:  # noqa: BLE001 — usterka strażnika przepuszcza polecenie
         return 0
     if wynik:

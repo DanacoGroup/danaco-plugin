@@ -265,7 +265,8 @@ sh tests/uruchom_testy.sh
 │   └── marketplace.json     wpis marketplace; katalog pluginu jest własnym marketplace
 ├── hooks/
 │   ├── hooks.json           rejestracja jednego zdarzenia; jedyny klucz to `hooks`
-│   ├── po_zapisie.sh        wrapper PostToolUse
+│   ├── po_zapisie.sh        wrapper PostToolUse (POSIX sh, fail-open)
+│   ├── po_zapisie.py        walidator dyscypliny i nazewnictwa po zapisie
 │   └── README.md            opis hooka i kodów wyjścia
 ├── mcp/
 │   └── danaco-programy.py   serwer MCP katalogu programów (rozdz. 6)

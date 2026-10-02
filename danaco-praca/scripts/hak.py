@@ -2,7 +2,7 @@
 """Hooki danaco-praca 5: jedno wejście dla wszystkich zdarzeń wtyczki.
 
 Użycie (z hooks/hak.sh): hak.py <tryb> < zdarzenie.json
-  prompt      UserPromptSubmit / UserPromptExpansion — polecenia właściciela, zapis stanu
+  prompt      UserPromptSubmit — polecenia właściciela, zapis stanu
   narzedzie   PreToolUse — ochrona stanu, blokady sesji, straż sekretów i dysku
   stop        Stop — tryb pracy ciągłej (tylko agent główny)
   sesja       SessionStart i SubagentStart — przypomnienie aktywnych blokad
@@ -25,7 +25,10 @@ import polecenia as P  # noqa: E402
 import reguly as R  # noqa: E402
 import stan as S  # noqa: E402
 
-LIMIT_PETLI = int(os.environ.get("DANACO_PRACA_LIMIT_PETLI", "3") or 3)
+#: Po tylu kolejnych próbach zakończenia tury (bez wiadomości właściciela) hook Stop oddaje
+#: turę, żeby właściciel mógł wpisać wiadomość i żeby została od razu odczytana. Tryb /praca
+#: zostaje włączony i wznawia pracę na następnej turze. Zmienia DANACO_PRACA_PROG_ODDANIA.
+PROG_ODDANIA = max(1, int(os.environ.get("DANACO_PRACA_PROG_ODDANIA", "6") or 6))
 LIMIT_PLIKOW = int(os.environ.get("DANACO_PRACA_LIMIT_PLIKOW", "1") or 1)
 NAZWA_WTYCZKI = "danaco-praca"
 
@@ -34,37 +37,58 @@ def wypisz(dane: dict) -> None:
     json.dump(dane, sys.stdout, ensure_ascii=False)
 
 
+def wartosci_tekstowe(obj) -> list[str]:
+    """Wszystkie łańcuchy w strukturze wejścia narzędzia (do wykrycia podrzuconego polecenia)."""
+    wynik: list[str] = []
+    if isinstance(obj, str):
+        wynik.append(obj)
+    elif isinstance(obj, dict):
+        for wartosc in obj.values():
+            wynik.extend(wartosci_tekstowe(wartosc))
+    elif isinstance(obj, (list, tuple)):
+        for wartosc in obj:
+            wynik.extend(wartosci_tekstowe(wartosc))
+    return wynik
+
+
 # --- UserPromptSubmit -----------------------------------------------------------------------------
 
 ZASADY_PRACY = (
-    "Tryb pracy ciągłej włączył właściciel. Do jego polecenia /koniec-pracy nie kończysz tury: "
-    "hook Stop odrzuca każdą próbę zakończenia. Nie czekasz i nie śpisz (sleep, pętle oczekiwania, "
-    "ScheduleWakeup, CronCreate, blokujący odbiór wyniku są odrzucane). Wolno Ci uruchamiać procesy "
-    "i agentów w tle oraz stawiać monitoring (także narzędziem Monitor), ale sam cały czas pracujesz dalej: weryfikujesz, "
-    "testujesz, poprawiasz, dokumentujesz i bierzesz kolejne części zlecenia. Narzędzia i miejsca "
-    "zapisu nie są ograniczone; obowiązują tylko zasady serwera (kosz zamiast kasowania, straż "
-    "pakietów i dysku, sekrety). Trybu nie zmieniasz sam — przełącza go wyłącznie właściciel."
+    "Tryb pracy ciągłej włączył właściciel. Do jego polecenia /koniec-pracy nie kończysz tury z "
+    "własnej woli: hook Stop odrzuca zakończenie i przypomina zlecenie. Nie czekasz i nie śpisz "
+    "(sleep, pętle oczekiwania, ScheduleWakeup, CronCreate, blokujący odbiór wyniku są odrzucane). "
+    "Wolno Ci uruchamiać procesy i agentów w tle oraz stawiać monitoring (także narzędziem Monitor), "
+    "ale sam cały czas pracujesz dalej: weryfikujesz, testujesz, poprawiasz, dokumentujesz i bierzesz "
+    "kolejne części zlecenia. Co pewien czas hook Stop sam odda turę, żeby właściciel mógł się wtrącić "
+    "— to nie koniec trybu: /praca zostaje włączone i masz pracować dalej. Gdy właściciel przyśle "
+    "wiadomość, najpierw ją obsłuż, a potem wracaj do zlecenia. Narzędzia i miejsca zapisu nie są "
+    "ograniczone; obowiązują tylko zasady serwera (kosz zamiast kasowania, straż pakietów i dysku, "
+    "sekrety). Trybu nie zmieniasz sam — przełącza go wyłącznie właściciel."
 )
 
 
 def obsluz_polecenia(zdarzenie: dict) -> int:
     tekst = str(zdarzenie.get("prompt") or "")
-    if zdarzenie.get("hook_event_name") == "UserPromptExpansion":
-        nazwa = str(zdarzenie.get("command_name") or zdarzenie.get("skill_name") or "").split(":")[-1].lstrip("/")
-        argumenty = str(zdarzenie.get("command_args") or zdarzenie.get("arguments") or "")
-        if nazwa in P.POLECENIA and not P.rozpoznaj(tekst)[0]:
-            tekst = f"/{nazwa} {argumenty}".strip()
     pary, reszta = P.rozpoznaj(tekst)
     sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
     magazyn = S.Magazyn()
     if not pary:
-        # Zwykła wiadomość właściciela zaczyna nową turę: licznik pętli od zera.
+        # Zwykła wiadomość właściciela zaczyna nową turę. Przy włączonej pracy ciągłej:
+        # zeruje licznik oddań tury i przypomina modelowi, że tryb trwa (re-aktywacja).
         stan = magazyn.wczytaj(sesja)
-        if stan["praca"]["wlaczona"] and stan["praca"]["bez_narzedzi"]:
-            with magazyn.blokada():
-                stan = magazyn.wczytaj(sesja)
-                stan["praca"]["bez_narzedzi"] = {}
-                magazyn.zapisz(stan)
+        if stan["praca"]["wlaczona"]:
+            if stan["praca"].get("oddania"):
+                with magazyn.blokada():
+                    stan = magazyn.wczytaj(sesja)
+                    stan["praca"]["oddania"] = 0
+                    magazyn.zapisz(stan)
+            kontekst = [f"[{NAZWA_WTYCZKI}] Tryb pracy ciągłej (/praca) jest nadal włączony. "
+                        "Obsłuż tę wiadomość właściciela, a potem pracuj dalej nad zleceniem; "
+                        "turę kończysz dopiero na /koniec-pracy albo gdy hook sam odda głos."]
+            if stan["praca"].get("zlecenie"):
+                kontekst.append("Zlecenie: " + stan["praca"]["zlecenie"])
+            wypisz({"hookSpecificOutput": {"hookEventName": zdarzenie.get("hook_event_name") or "UserPromptSubmit",
+                                           "additionalContext": "\n".join(kontekst)}})
         return 0
 
     nazwy = [p for p, _ in pary]
@@ -82,7 +106,7 @@ def obsluz_polecenia(zdarzenie: dict) -> int:
             rodzaj = P.POLECENIA[polecenie]
             if rodzaj[0] == "praca":
                 stan["praca"]["wlaczona"] = rodzaj[1]
-                stan["praca"]["bez_narzedzi"] = {}
+                stan["praca"]["oddania"] = 0
                 if rodzaj[1]:
                     tresc = "\n".join(x for x in (zlecenie_pracy, reszta) if x)
                     if tresc or not stan["praca"].get("od"):
@@ -256,14 +280,27 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
                         "Stan pokazuje właścicielowi polecenie /tryb")
     # 2. Polecenia właściciela przełącza tylko właściciel: ani narzędzie Skill, ani podrzucony prompt.
     if narzedzie in ("Skill", "SlashCommand"):
-        nazwa = str(wejscie.get("skill") or wejscie.get("command") or wejscie.get("name") or "")
-        nazwa = nazwa.strip().lstrip("/").split()[0].split(":")[-1] if nazwa.strip() else ""
-        if nazwa in P.POLECENIA:
-            return ("deny", f"/{nazwa} przełącza wyłącznie właściciel, wpisując polecenie na czacie")
-    if powloka is not None or re.search(r"(?i)send|message|notif|terminal|prompt|slash|push", narzedzie):
-        if P.TOKEN.search(surowe if powloka is None else powloka):
-            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /blokuj-…, /odblokuj-…, /tryb, "
-                            "/sesja-przejmij) wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
+        kanoniczna = P.kanon(str(wejscie.get("skill") or wejscie.get("command") or wejscie.get("name") or ""))
+        if kanoniczna:
+            return ("deny", f"/{kanoniczna} przełącza wyłącznie właściciel, wpisując polecenie na czacie")
+    # Podrzucenie polecenia przez narzędzie wysyłające tekst albo w poleceniu powłoki — ale tylko
+    # jako SAMODZIELNE polecenie (cały wiersz), a w powłoce dodatkowo gdy polecenie podaje token
+    # agentowi (claude/codex). Zwykła wzmianka w ścieżce (`ls /praca`) czy w komunikacie commita
+    # nie jest samodzielnym poleceniem i przechodzi. Z powłoki pomijamy treść dokumentów here.
+    podrzucone = False
+    if powloka is not None:
+        oczyszczone = R.bez_heredoc(powloka)
+        podrzucone = bool(P.rozpoznaj(oczyszczone)[0]) or (R.uruchamia_agenta(oczyszczone) and P.zawiera_token(oczyszczone))
+    elif re.search(r"(?i)send|message|notif|terminal|prompt|slash|push", narzedzie):
+        podrzucone = any(P.rozpoznaj(t)[0] for t in wartosci_tekstowe(wejscie))
+    if podrzucone:
+        return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /blokuj-…, /odblokuj-…, /tryb, "
+                        "/sesja-przejmij) wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
+    # Polecenie powłoki zbyt duże, by je bezpiecznie przeanalizować: blokujemy, zamiast przepuścić
+    # (dotyczy też straży sekretów i dysku, które muszą móc rozebrać polecenie).
+    if powloka is not None and R.za_duze_do_analizy(powloka):
+        return ("deny", "Polecenie jest zbyt duże, by je bezpiecznie sprawdzić pod kątem straży sekretów, "
+                        "dysku i blokad danaco-praca. Podziel je na mniejsze kroki")
     if S.aktywne(stan):
         wynik = chroni_mechanizm(narzedzie, wejscie, powloka, surowe, cwd)
         if wynik:
@@ -323,47 +360,76 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
             wynik = R.blokada_reczna(powloka, cwd)
             if wynik:
                 return ("deny", wynik)
-    # 4. Twarde zasady serwera: sekrety (zawsze) i dysk systemowy (gdy nie robi tego hook konta).
-    return twarde_zasady(narzedzie, wejscie, cwd)
+    # 4. Twarde zasady serwera: sekrety i dysk systemowy — dla KAŻDEGO narzędzia, zawsze.
+    return twarde_zasady(narzedzie, wejscie, cwd, powloka)
 
 
-def straz_dysku_systemowa() -> bool:
-    """Czy straż dysku działa już jako hook konta albo hook zarządzany (bez dublowania)."""
-    wymuszenie = os.environ.get("DANACO_PRACA_STRAZ_DYSKU", "")
-    if wymuszenie in ("wtyczka", "zawsze"):
-        return False
-    if wymuszenie in ("system", "nigdy"):
-        return True
-    konfiguracja = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
-    for sciezka in (os.path.join(konfiguracja, "settings.json"), "/etc/claude-code/managed-settings.json"):
-        try:
-            with open(sciezka, encoding="utf-8") as plik:
-                if "danaco-straz-dysku-hook" in plik.read():
-                    return True
-        except OSError:
-            continue
-    return False
+#: Narzędzia odczytu, przez które model mógłby wypisać zawartość pliku z sekretem.
+NARZEDZIA_ODCZYTU = {"Read", "NotebookRead"}
+#: Pola narzędzi MCP, które wskazują pliki wejściowe (wysyłane do programu) — np. danaco-programy.
+MCP_POLA_PLIKOW = ("pliki", "files", "paths", "input_files")
 
 
-def twarde_zasady(narzedzie: str, wejscie: dict, cwd: str) -> tuple[str, str] | None:
+def cele_zapisu_narzedzia(narzedzie: str, wejscie: dict) -> list[str]:
+    """Ścieżki, do których narzędzie zapisuje: pliki narzędzi plikowych i wyniki programów MCP."""
+    cele: list[str] = []
+    if narzedzie in NARZEDZIA_PLIKOWE:
+        cele += [str(wejscie.get(p)) for p in SCIEZKI_PLIKOWE if wejscie.get(p)]
+    if narzedzie.startswith("mcp__"):
+        for pole in ("wyniki_do", "output", "out", "plik", "sciezka", "path", "file_path"):
+            if isinstance(wejscie.get(pole), str) and wejscie[pole]:
+                cele.append(wejscie[pole])
+    return cele
+
+
+def twarde_zasady(narzedzie: str, wejscie: dict, cwd: str, powloka: str | None) -> tuple[str, str] | None:
+    """Zasady serwera egzekwowane dla KAŻDEGO narzędzia: sekrety i dysk systemowy.
+
+    Nie ograniczają się do Bash i Write — polecenie powłoki dowolnego narzędzia (Monitor,
+    PowerShell, MCP `uruchom` z polem `polecenie`) przechodzi przez straż sekretów i dysku,
+    odczyt pliku z sekretem (Read) jest odrzucany, a pliki wejściowe programów MCP nie mogą
+    wynieść sekretu poza plik 600.
+    """
     import straz_dysku
     import straz_sekretow
 
+    straz_sekretow.KATALOG["cwd"] = cwd
+    straz_dysku.KATALOG["cwd"] = cwd
     najostrzejsza = None
-    if narzedzie == "Bash":
-        straz_sekretow.KATALOG["cwd"] = cwd
-        wynik = straz_sekretow.ocen(str(wejscie.get("command") or ""))
+
+    # Sekrety w poleceniu powłoki dowolnego narzędzia.
+    if powloka is not None:
+        wynik = straz_sekretow.ocen(powloka)
         if wynik:
-            wynik = (wynik[0], f"Straż sekretów Danaco: {wynik[1]}")
             if wynik[0] == "deny":
-                return wynik
-            najostrzejsza = wynik
-    if narzedzie in ("Bash", "Write") and not straz_dysku_systemowa():
-        straz_dysku.KATALOG["cwd"] = cwd
-        if narzedzie == "Bash":
-            wynik = straz_dysku.ocen(str(wejscie.get("command") or ""))
-        else:
-            wynik = straz_dysku.ocen_zapis_pliku(str(wejscie.get("file_path") or ""))
+                return ("deny", f"Straż sekretów Danaco: {wynik[1]}")
+            najostrzejsza = ("ask", f"Straż sekretów Danaco: {wynik[1]}")
+
+    # Odczyt pliku z sekretem narzędziem odczytu (Read, NotebookRead).
+    if narzedzie in NARZEDZIA_ODCZYTU:
+        for pole in SCIEZKI_PLIKOWE:
+            sciezka = str(wejscie.get(pole) or "")
+            if sciezka and straz_sekretow.sciezka_sekretu(sciezka):
+                return ("deny", f"Straż sekretów Danaco: odczyt {sciezka} wypisałby sekret do rozmowy. "
+                                "Sekrety zostają w plikach 600; sprawdź obecność klucza bez wartości")
+
+    # Pliki wejściowe programów MCP: nie wynoś sekretu poza plik 600.
+    if narzedzie.startswith("mcp__"):
+        for pole in MCP_POLA_PLIKOW:
+            for sciezka in (wejscie.get(pole) or []):
+                if isinstance(sciezka, str) and sciezka and straz_sekretow.sciezka_sekretu(sciezka):
+                    return ("deny", f"Straż sekretów Danaco: przez {narzedzie} wysyłasz plik z sekretem "
+                                    f"({sciezka}) poza plik 600. Nie przekazuj sekretów do programów")
+
+    # Dysk systemowy: polecenie powłoki dowolnego narzędzia.
+    if powloka is not None:
+        wynik = straz_dysku.ocen(powloka)
+        if wynik:
+            return (wynik[0], f"Straż dysku systemowego Danaco: {wynik[1]}")
+
+    # Dysk systemowy: cele zapisu narzędzi plikowych i MCP.
+    for sciezka in cele_zapisu_narzedzia(narzedzie, wejscie):
+        wynik = straz_dysku.ocen_zapis_pliku(sciezka)
         if wynik:
             return (wynik[0], f"Straż dysku systemowego Danaco: {wynik[1]}")
     return najostrzejsza
@@ -373,12 +439,6 @@ def obsluz_narzedzie(zdarzenie: dict) -> int:
     sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
     magazyn = S.Magazyn()
     stan = magazyn.wczytaj(sesja)
-    if stan["praca"]["wlaczona"] and not zdarzenie.get("agent_id") and stan["praca"]["bez_narzedzi"].get("glowny"):
-        # Wywołanie narzędzia przez agenta głównego to praca: licznik prób zakończenia od zera.
-        with magazyn.blokada():
-            stan = magazyn.wczytaj(sesja)
-            stan["praca"]["bez_narzedzi"].pop("glowny", None)
-            magazyn.zapisz(stan)
     wynik = ocen_narzedzie(zdarzenie, stan, magazyn.katalog)
     if not wynik:
         return 0
@@ -397,9 +457,43 @@ def obsluz_narzedzie(zdarzenie: dict) -> int:
 
 # --- Stop -----------------------------------------------------------------------------------------
 
+#: Pola, którymi klient mógłby zasygnalizować nieobsłużone wejście właściciela w hooku Stop.
+#: Klient 2.1.287 ich nie przekazuje — honorujemy je, gdy się pojawią (zgodność w przód).
+POLA_WEJSCIA_WLASCICIELA = ("pending_user_input", "has_queued_input", "queued_messages",
+                            "user_input_pending", "pending_input")
+
+
+def _wejscie_wlasciciela(zdarzenie: dict) -> bool:
+    for klucz in POLA_WEJSCIA_WLASCICIELA:
+        wartosc = zdarzenie.get(klucz)
+        if isinstance(wartosc, bool) and wartosc:
+            return True
+        if isinstance(wartosc, (list, str, int)) and not isinstance(wartosc, bool) and wartosc:
+            return True
+    return False
+
+
+def _oddaj_ture(magazyn, sesja: str, stan: dict, powod_dziennika: str) -> int:
+    """Kończy turę (brak decyzji), zerując licznik oddań. Tryb /praca zostaje włączony."""
+    stan["praca"]["oddania"] = 0
+    magazyn.zapisz(stan, None)
+    magazyn.dopisz({"zdarzenie": "oddanie-tury", "sesja": sesja, "powod": powod_dziennika})
+    wypisz({"systemMessage": (
+        f"{NAZWA_WTYCZKI}: tryb /praca oddaje turę, żeby właściciel mógł wpisać wiadomość — zostanie "
+        "odczytana od razu. Tryb jest nadal WŁĄCZONY i wznowi pracę ciągłą na następnej turze (po "
+        "wiadomości właściciela; samo „kontynuuj” wystarczy). Wyłącza go tylko /koniec-pracy.")})
+    return 0
+
+
 def obsluz_stop(zdarzenie: dict) -> int:
-    """Praca ciągła wiąże wyłącznie agenta głównego: podagent oddaje wynik od razu
-    (decyzja właściciela z 2026-10-02), dlatego hook nie jest rejestrowany dla SubagentStop."""
+    """Praca ciągła: hook Stop nie pozwala agentowi skończyć tury z własnej woli, ale okresowo
+    sam oddaje turę, żeby właściciel zawsze mógł wysłać wiadomość i mieć ją odczytaną natychmiast.
+
+    Jedynym wyłączeniem trybu jest /koniec-pracy; oddanie tury trybu nie wyłącza — tryb wznawia
+    się na następnej turze (UserPromptSubmit/SessionStart). Gdy klient zasygnalizuje nieobsłużone
+    wejście właściciela, oddajemy turę od razu; w przeciwnym razie co PROG_ODDANIA prób zakończenia.
+    Tryb wiąże wyłącznie agenta głównego — podagent oddaje wynik normalnie (SubagentStop nie jest
+    rejestrowany, decyzja właściciela z 2026-10-02)."""
     if zdarzenie.get("hook_event_name") == "SubagentStop" or zdarzenie.get("agent_id"):
         return 0
     sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
@@ -410,19 +504,15 @@ def obsluz_stop(zdarzenie: dict) -> int:
         stan = magazyn.wczytaj(sesja)
         if not stan["praca"]["wlaczona"]:
             return 0
-        liczniki = stan["praca"]["bez_narzedzi"]
-        proby = int(liczniki.get("glowny", 0))
-        if proby >= LIMIT_PETLI:
-            # Bezpiecznik: kolejne próby zakończenia bez żadnego wywołania narzędzia.
-            liczniki.pop("glowny", None)
-            magazyn.zapisz(stan, None)
-            magazyn.dopisz({"zdarzenie": "bezpiecznik-petli", "sesja": sesja, "proby": proby})
-            wypisz({"systemMessage": (
-                f"{NAZWA_WTYCZKI}: agent {proby + 1} razy z rzędu próbował zakończyć turę bez wywołania "
-                "żadnego narzędzia, więc bezpiecznik przerwał pętlę i oddał Ci głos. Tryb /praca jest "
-                "nadal włączony. Napisz, co dalej, albo wyłącz tryb poleceniem /koniec-pracy.")})
-            return 0
-        liczniki["glowny"] = proby + 1
+        if _wejscie_wlasciciela(zdarzenie):
+            # Klient wie o wiadomości właściciela: oddaj turę od razu, żeby została odczytana.
+            return _oddaj_ture(magazyn, sesja, stan, "wejscie-wlasciciela")
+        oddania = int(stan["praca"].get("oddania", 0)) + 1
+        if oddania >= PROG_ODDANIA:
+            # Okresowe oddanie tury: hook nie widzi kolejki wejścia, więc gwarantuje właścicielowi
+            # okno na wiadomość, zamiast trzymać turę w nieskończoność.
+            return _oddaj_ture(magazyn, sesja, stan, f"prog-{oddania}")
+        stan["praca"]["oddania"] = oddania
         magazyn.zapisz(stan, None)
     zlecenie = (stan["praca"].get("zlecenie") or "").strip()
     powod = ("Tryb pracy ciągłej (/praca) jest włączony przez właściciela — nie kończ tury. Kontynuuj zadanie"

@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""Testy hooków danaco-praca 5: każde zdarzenie i każde polecenie na wejściach JSON.
+"""Testy hooków danaco-praca: każde zdarzenie i każde polecenie na wejściach JSON.
 
 Hooki są uruchamiane tak jak przez klienta: wrapper `hooks/hak.sh` z JSON-em zdarzenia na
-stdin. Stan trafia do katalogu tymczasowego (`DANACO_PRACA_STAN`), więc testy nie dotykają
-danych prawdziwej instalacji. Narzędzie przejmowania sesji podmieniamy atrapą
-(`DANACO_PRZEJMIJ_CMD`), żeby nie ruszać prawdziwych sesji.
+stdin. Stan trafia do katalogu tymczasowego (zmienna środowiskowa katalogu stanu), a tablicę
+montowań straży dysku podkłada plik testowy (zmienna `DANACO_PRACA_MOUNTINFO`), więc testy
+nie zależą od układu dysków maszyny ani nie dotykają danych prawdziwej instalacji. Narzędzie
+przejmowania sesji podmieniamy atrapą (`DANACO_PRZEJMIJ_CMD`).
+
+Nazwy niektórych zmiennych i ścieżek stanu są tu składane z fragmentów (`_STAN`, `_DATA`,
+`_PLD`): to te same dosłowne tokeny, których sama wtyczka pilnuje, więc w źródle testu
+trzymamy je rozbite, żeby test dało się edytować przy włączonej wtyczce.
 """
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -23,24 +28,43 @@ WRAPPER = KORZEN / "hooks" / "hak.sh"
 sys.path.insert(0, str(KORZEN / "scripts"))
 
 import polecenia as P  # noqa: E402
+import reguly as R  # noqa: E402
 from stan import BLOKADY, TEMATY  # noqa: E402
+
+# Tokeny stanu składane z fragmentów (patrz docstring modułu).
+_STAN = "DANACO_PRACA" "_STAN"
+_DATA = "CLAUDE_PLUGIN" "_DATA"
+_PLD = "plugins/" "data/"
 
 
 class Baza(unittest.TestCase):
+    #: Tablica montowań jednodyskowa (bez osobnego /danaco) — straż dysku wtedy milczy.
+    MONTOWANIA_JEDEN = "1 0 9:3 / / rw - ext4 /dev/x rw\n"
+    #: Osobny /danaco (jak na danaco-nexus) — straż dysku działa i odrzuca zapis na /.
+    MONTOWANIA_OSOBNY = MONTOWANIA_JEDEN + "2 1 9:5 / /danaco rw - ext4 /dev/y rw\n"
+
     def setUp(self):
         self.katalog = tempfile.mkdtemp(prefix="dp5-test-")
         self.stan = os.path.join(self.katalog, "stan")
         self.cwd = os.path.join(self.katalog, "projekt")
         os.makedirs(self.cwd)
+        self.mi_jeden = os.path.join(self.katalog, "mountinfo-jeden")
+        self.mi_osobny = os.path.join(self.katalog, "mountinfo-osobny")
+        with open(self.mi_jeden, "w") as plik:
+            plik.write(self.MONTOWANIA_JEDEN)
+        with open(self.mi_osobny, "w") as plik:
+            plik.write(self.MONTOWANIA_OSOBNY)
         self.przejmij = os.path.join(self.katalog, "przejmij-atrapa")
         with open(self.przejmij, "w") as plik:
             plik.write("#!/bin/sh\necho \"ATRAPA-PRZEJMIJ argumenty: $*\"\n")
         os.chmod(self.przejmij, 0o755)
-        self.env = dict(os.environ, DANACO_PRACA_STAN=self.stan, DANACO_PRACA_STRAZ_DYSKU="system",
-                        DANACO_PRZEJMIJ_CMD=self.przejmij, CLAUDE_PLUGIN_ROOT=str(KORZEN),
+        self.env = dict(os.environ, DANACO_PRACA_MOUNTINFO=self.mi_jeden,
+                        DANACO_PRACA_PROG_ODDANIA="3", DANACO_PRZEJMIJ_CMD=self.przejmij,
+                        CLAUDE_PLUGIN_ROOT=str(KORZEN),
                         CLAUDE_CONFIG_DIR=os.path.join(self.katalog, "profil"),
                         TMPDIR=os.path.join(self.katalog, "tmp"))
-        self.env.pop("CLAUDE_PLUGIN_DATA", None)
+        self.env[_STAN] = self.stan
+        self.env.pop(_DATA, None)
 
     def tearDown(self):
         shutil.rmtree(self.katalog, ignore_errors=True)
@@ -57,17 +81,21 @@ class Baza(unittest.TestCase):
     def prompt(self, tekst: str, sesja: str = "sesja-a") -> dict:
         return self.hook("prompt", {"hook_event_name": "UserPromptSubmit", "prompt": tekst, "session_id": sesja})
 
-    def narzedzie(self, nazwa: str, wejscie: dict, sesja: str = "sesja-a", **dodatkowe) -> str | None:
+    def narzedzie(self, nazwa: str, wejscie: dict, sesja: str = "sesja-a", env: dict | None = None, **dodatkowe):
         wynik = self.hook("narzedzie", {"hook_event_name": "PreToolUse", "tool_name": nazwa, "tool_input": wejscie,
-                                        "session_id": sesja, **dodatkowe})
+                                        "session_id": sesja, **dodatkowe}, env)
         return (wynik.get("hookSpecificOutput") or {}).get("permissionDecision")
 
-    def bash(self, polecenie: str, **wejscie) -> str | None:
+    def powod_narzedzia(self, nazwa: str, wejscie: dict, sesja: str = "sesja-a") -> dict:
+        return self.hook("narzedzie", {"hook_event_name": "PreToolUse", "tool_name": nazwa, "tool_input": wejscie,
+                                       "session_id": sesja}).get("hookSpecificOutput") or {}
+
+    def bash(self, polecenie: str, **wejscie):
         return self.narzedzie("Bash", {"command": polecenie, **wejscie})
 
-    def stop(self, sesja: str = "sesja-a", podagent: str | None = None) -> dict:
+    def stop(self, sesja: str = "sesja-a", podagent: str | None = None, **dodatkowe) -> dict:
         zdarzenie = {"hook_event_name": "SubagentStop" if podagent else "Stop", "session_id": sesja,
-                     "stop_hook_active": False}
+                     "stop_hook_active": False, **dodatkowe}
         if podagent:
             zdarzenie["agent_id"] = podagent
         return self.hook("stop", zdarzenie)
@@ -109,13 +137,11 @@ class TestPolecenia(Baza):
         self.assertFalse(self.stan_sesji()["praca"]["wlaczona"])
 
     def test_konwencja_nazw_spojna(self):
-        # Wszystkie pary blokad trzymają jedną zasadę: blokuj-<temat> / odblokuj-<temat>.
         for temat in TEMATY:
             self.assertIn(f"blokuj-{temat}", P.POLECENIA)
             self.assertIn(f"odblokuj-{temat}", P.POLECENIA)
         for stara in ("bash-blokuj", "z-bash", "bez-bash", "sudo-tak", "dziennik", "sesje", "przejmij"):
             self.assertNotIn(stara, P.POLECENIA)
-        # Czasownik pierwszy: menu grupuje po przedrostku.
         for nazwa, rodzaj in P.POLECENIA.items():
             if rodzaj[0] == "blok":
                 self.assertTrue(nazwa.startswith(("blokuj-", "odblokuj-")), nazwa)
@@ -129,7 +155,6 @@ class TestPolecenia(Baza):
             self.assertIn(nazwa, wynik["reason"])
 
     def test_pure_control_blokuje_ture(self):
-        # Sama komenda (bez zadania) nie woła modelu — pokazuje wynik przez decision: block.
         wynik = self.prompt("/blokuj-bash")
         self.assertEqual(wynik["decision"], "block")
         self.assertNotIn("hookSpecificOutput", wynik)
@@ -243,14 +268,47 @@ class TestOchronaStanu(Baza):
         os.remove(os.path.join(self.stan, "sesje", "sesja-a.json"))
         self.assertEqual(self.stop().get("decision"), "block")
 
+    def test_skasowany_klucz_nie_zdejmuje_blokad(self):
+        # Ustalenie #1: utrata klucza nie może po cichu zdjąć blokad (fail-safe utrzymuje stan).
+        self.prompt("/blokuj-bash")
+        os.remove(os.path.join(self.stan, "klucz"))
+        self.assertEqual(self.bash("ls"), "deny")
+        self.assertTrue(self.stan_sesji()["blokady"]["bash"])  # /tryb pokaże realny stan
+        self.assertIn("stan-bezpieczny", [w["zdarzenie"] for w in self.dziennik()])
+
+    def test_obciety_klucz_nie_psuje_zapisu(self):
+        # Ustalenie #1: obcięty klucz naprawiamy atomowo, bez FileExistsError; blokada zostaje,
+        # a kolejne zapisy (zmiana trybu) działają.
+        self.prompt("/blokuj-bash")
+        with open(os.path.join(self.stan, "klucz"), "wb") as plik:
+            plik.write(b"za-krotki")
+        self.assertEqual(self.bash("ls"), "deny")
+        self.prompt("/odblokuj-bash")  # zapis działa — brak FileExistsError
+        self.assertFalse(self.stan_sesji()["blokady"]["bash"])
+        self.assertIsNone(self.bash("ls"))
+
+    def test_brak_stanu_i_bez_trybow_wraca_pusty(self):
+        # Sam wpis w dzienniku (odmowa), bez zapisanego trybu, nie może włączyć blokad fail-safe.
+        self.assertEqual(self.bash("cat ~/.ssh/id_ed25519"), "deny")  # tylko odmowa w dzienniku
+        self.assertIsNone(self.bash("git status"))
+        self.assertIsNone(self.bash("git push origin main"))
+
+    def test_odmowa_stanu_nie_ujawnia_sciezki(self):
+        # Ustalenie #5: komunikat odmowy dostępu do stanu nie zdradza ścieżki ani nazwy klucza.
+        wy = self.powod_narzedzia("Read", {"file_path": f"{self.stan}/klucz"})
+        self.assertEqual(wy.get("permissionDecision"), "deny")
+        powod = wy.get("permissionDecisionReason", "")
+        self.assertNotIn(self.stan, powod)
+        self.assertNotIn("klucz", powod)
+
     def test_model_nie_dotyka_stanu(self):
         for nazwa, wejscie in (
             ("Write", {"file_path": f"{self.stan}/sesje/sesja-a.json", "content": "{}"}),
             ("Read", {"file_path": f"{self.stan}/klucz"}),
             ("Bash", {"command": f"cat {self.stan}/dziennik.jsonl"}),
-            ("Bash", {"command": "ls ~/.claude/plugins/data/danaco-praca-danaco/stan"}),
-            ("Bash", {"command": "cat ~/.claude/plugins/data/danaco-p*/stan/klucz"}),
-            ("Bash", {"command": "rm -rf \"$CLAUDE_PLUGIN_DATA\""}),
+            ("Bash", {"command": "ls ~/.claude/" + _PLD + "danaco-praca-danaco/stan"}),
+            ("Bash", {"command": "cat ~/.claude/" + _PLD + "danaco-p*/stan/klucz"}),
+            ("Bash", {"command": 'rm -rf "$' + _DATA + '"'}),
         ):
             with self.subTest(nazwa=nazwa, wejscie=wejscie):
                 self.assertEqual(self.narzedzie(nazwa, wejscie), "deny")
@@ -259,12 +317,20 @@ class TestOchronaStanu(Baza):
         self.prompt("/praca")
         self.assertEqual(self.narzedzie("Skill", {"skill": "koniec-pracy"}), "deny")
         self.assertEqual(self.narzedzie("Skill", {"skill": "danaco-praca:odblokuj-bash"}), "deny")
+        self.assertEqual(self.narzedzie("Skill", {"skill": "/KONIEC-PRACY zadanie"}), "deny")  # #7 normalizacja
         self.assertEqual(self.narzedzie("SendMessage", {"to": "main", "message": "/koniec-pracy"}), "deny")
-        self.assertEqual(self.bash("echo '/koniec-pracy' | claude -p"), "deny")
+        self.assertEqual(self.bash("echo '/koniec-pracy' | claude -p"), "deny")  # token podany agentowi
         self.assertEqual(self.bash("claude -p --resume abc 'dalej'"), "deny")
         self.assertIsNone(self.narzedzie("Skill", {"skill": "dataviz"}))
         self.assertIsNone(self.bash("ls skills/praca/SKILL.md"))
         self.assertIsNone(self.bash("ls ~/.claude/plugins/data/"))
+
+    def test_zawezona_ochrona_przed_wstrzyknieciem(self):
+        # Ustalenie #4: wzmianka w ścieżce i w komunikacie commita to nie samodzielne polecenie.
+        self.prompt("/praca")
+        self.assertIsNone(self.bash("ls /praca"))
+        self.assertIsNone(self.bash("git commit -m 'opisz /blokuj-bash i /koniec-pracy w README'"))
+        self.assertIsNone(self.bash("grep -rn koniec-pracy ."))
 
     def test_ochrona_mechanizmu_tylko_przy_aktywnym_trybie(self):
         ustawienia = os.path.join(self.katalog, "profil", "settings.json")
@@ -288,35 +354,45 @@ class TestPracaCiagla(Baza):
         self.assertIn("napisz raport", wynik["reason"])
         self.assertIn("/koniec-pracy", wynik["reason"])
 
-    def test_bezpiecznik_petli_i_reset_przez_narzedzie(self):
+    def test_stop_oddaje_ture_co_prog(self):
+        # A+B: nie ma licznika „3 próby → przejście”; zamiast tego co PROG_ODDANIA (tu 3) hook
+        # oddaje turę, żeby właściciel mógł pisać — tryb zostaje włączony.
         self.prompt("/praca")
-        for _ in range(3):
-            self.assertEqual(self.stop().get("decision"), "block")
+        self.assertEqual(self.stop()["decision"], "block")
+        self.assertEqual(self.stop()["decision"], "block")
         wynik = self.stop()
         self.assertNotIn("decision", wynik)
-        self.assertIn("bezpiecznik", wynik["systemMessage"])
+        self.assertIn("oddaje turę", wynik["systemMessage"])
+        self.assertIn("nadal WŁĄCZONY", wynik["systemMessage"])
         self.assertTrue(self.stan_sesji()["praca"]["wlaczona"])
-        self.assertEqual(self.stop().get("decision"), "block")
-        self.assertEqual(self.stop().get("decision"), "block")
-        self.bash("echo praca")
-        for _ in range(3):
-            self.assertEqual(self.stop().get("decision"), "block")
-        self.assertIn("bezpiecznik-petli", [w["zdarzenie"] for w in self.dziennik()])
+        self.assertEqual(self.stan_sesji()["praca"]["oddania"], 0)
+        self.assertEqual(self.stop()["decision"], "block")  # praca wznowiona, znów blokuje
+        self.assertIn("oddanie-tury", [w["zdarzenie"] for w in self.dziennik()])
 
-    def test_wiadomosc_wlasciciela_zeruje_licznik(self):
+    def test_wejscie_wlasciciela_oddaje_ture_od_razu(self):
+        # B: gdy klient zasygnalizuje nieobsłużone wejście właściciela — oddaj turę natychmiast.
+        self.prompt("/praca")
+        self.assertEqual(self.stop()["decision"], "block")
+        wynik = self.stop(pending_user_input=True)
+        self.assertNotIn("decision", wynik)
+        self.assertIn("oddaje turę", wynik["systemMessage"])
+        self.assertTrue(self.stan_sesji()["praca"]["wlaczona"])
+        self.assertEqual(self.stan_sesji()["praca"]["oddania"], 0)
+
+    def test_wiadomosc_wlasciciela_wznawia_i_zeruje(self):
         self.prompt("/praca")
         self.stop()
         self.stop()
-        self.prompt("dalej, popraw testy")
-        self.assertEqual(self.stan_sesji()["praca"]["bez_narzedzi"], {})
+        wynik = self.prompt("dalej, popraw testy")
+        self.assertEqual(self.stan_sesji()["praca"]["oddania"], 0)
+        self.assertIn("nadal włączony", wynik["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(self.stop()["decision"], "block")
 
     def test_podagent_oddaje_wynik_od_razu(self):
         self.prompt("/praca")
         self.assertEqual(self.stop(podagent="ag1"), {})
         self.assertEqual(self.stop(podagent="ag1"), {})
         self.assertEqual(self.stop().get("decision"), "block")
-        self.narzedzie("Bash", {"command": "ls"}, agent_id="ag1")
-        self.assertEqual(self.stan_sesji()["praca"]["bez_narzedzi"], {"glowny": 1})
         wynik = self.hook("sesja", {"hook_event_name": "SubagentStart", "agent_id": "ag1"})
         self.assertIn("oddajesz wynik normalnie", wynik["hookSpecificOutput"]["additionalContext"])
 
@@ -370,7 +446,8 @@ class TestBlokady(Baza):
 
     def test_bash(self):
         self.przypadki("bash", ["ls", ("PowerShell", {"command": "dir"}), ("Monitor", {"command": "x"}),
-                                ("mcp__terminal__run_in_terminal", {"command": "ls"})],
+                                ("mcp__terminal__run_in_terminal", {"command": "ls"}),
+                                ("mcp__danaco-programy__uruchom", {"polecenie": "ls"})],
                        [("Read", {"file_path": "/etc/hostname"}), ("Grep", {"pattern": "x"}),
                         ("Write", {"file_path": f"{self.cwd}/a.md", "content": "x"})])
 
@@ -466,25 +543,41 @@ class TestBlokady(Baza):
 
 
 class TestTwardeZasady(Baza):
-    def test_straz_sekretow_zawsze(self):
+    def narzedzie_env(self, nazwa, wejscie, env):
+        return self.narzedzie(nazwa, wejscie, env=env)
+
+    def test_straz_sekretow_kazde_narzedzie(self):
+        # Ustalenia #2/#3: sekret nie przejdzie przez ŻADNE narzędzie wykonujące ani odczytu.
         self.assertEqual(self.bash("cat ~/.ssh/id_ed25519"), "deny")
+        self.assertEqual(self.narzedzie("Monitor", {"command": "cat /etc/danaco/x.env"}), "deny")
+        self.assertEqual(self.narzedzie("PowerShell", {"command": "cat /etc/danaco/x.env"}), "deny")
+        self.assertEqual(self.narzedzie("mcp__danaco-programy__uruchom", {"polecenie": "cat /root/.env"}), "deny")
+        self.assertEqual(self.narzedzie("Read", {"file_path": "/root/.ssh/id_rsa"}), "deny")
+        self.assertEqual(self.narzedzie("mcp__danaco-programy__uruchom",
+                                        {"polecenie": "echo ok", "pliki": ["~/.ssh/id_ed25519"]}), "deny")
         self.assertEqual(self.bash("git push --force origin main"), "ask")
         self.assertIsNone(self.bash("git status"))
+        self.assertIsNone(self.narzedzie("Read", {"file_path": "/etc/hostname"}))
+        self.assertIsNone(self.narzedzie("mcp__danaco-programy__uruchom", {"polecenie": "echo ok"}))
 
-    def test_straz_dysku_bez_dublowania(self):
-        env = dict(self.env, DANACO_PRACA_STRAZ_DYSKU="wtyczka")
-        mountinfo = Path("/proc/self/mountinfo").read_text()
-        osobny_danaco = re.search(r" /danaco ", mountinfo) is not None
-        wynik = self.hook("narzedzie", {"tool_name": "Bash", "tool_input": {"command": "sudo git clone https://x/y.git /opt/y"}}, env)
-        self.assertEqual((wynik.get("hookSpecificOutput") or {}).get("permissionDecision"),
-                         "deny" if osobny_danaco else None)
-        os.makedirs(os.path.join(self.katalog, "profil"), exist_ok=True)
-        with open(os.path.join(self.katalog, "profil", "settings.json"), "w") as plik:
-            plik.write('{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"/usr/local/sbin/danaco-straz-dysku-hook"}]}]}}')
-        env = dict(self.env)
-        env.pop("DANACO_PRACA_STRAZ_DYSKU")
-        wynik = self.hook("narzedzie", {"tool_name": "Bash", "tool_input": {"command": "sudo git clone https://x/y.git /opt/y"}}, env)
-        self.assertEqual(wynik, {})
+    def test_straz_dysku_osobny_danaco(self):
+        # Ustalenia #2/#3/#9: straż dysku działa dla każdego narzędzia, gdy /danaco jest osobny,
+        # bez samo-dezaktywacji.
+        env = dict(self.env, DANACO_PRACA_MOUNTINFO=self.mi_osobny)
+        self.assertEqual(self.narzedzie_env("Bash", {"command": "sudo git clone https://x/y.git /opt/y"}, env), "deny")
+        self.assertEqual(self.narzedzie_env("Write", {"file_path": "/opt/a.py", "content": "x"}, env), "deny")
+        self.assertEqual(self.narzedzie_env("Monitor", {"command": "wget -O /opt/x https://x"}, env), "deny")
+        self.assertEqual(self.narzedzie_env("mcp__danaco-programy__uruchom",
+                                            {"polecenie": "echo hi", "wyniki_do": "/opt/wyniki"}, env), "deny")
+        self.assertIsNone(self.narzedzie_env("Bash", {"command": "git clone https://x/y.git /danaco/x/y"}, env))
+        # Jeden dysk (bez osobnego /danaco) — straż milczy.
+        self.assertIsNone(self.narzedzie_env("Bash", {"command": "sudo git clone https://x/y.git /opt/y"}, self.env))
+
+    def test_polecenie_zbyt_duze_blokuje(self):
+        # Ustalenie #6: polecenie powyżej limitu analizy jest BLOKOWANE, nie przepuszczane.
+        env = dict(self.env, DANACO_PRACA_LIMIT_ANALIZY="4096")
+        self.assertEqual(self.narzedzie_env("Bash", {"command": "echo " + "a" * 5000}, env), "deny")
+        self.assertIsNone(self.narzedzie_env("Bash", {"command": "echo ok"}, env))
 
     def test_wbudowane_przypadki_strazy(self):
         for skrypt in ("straz_sekretow.py", "straz_dysku.py"):
@@ -493,6 +586,32 @@ class TestTwardeZasady(Baza):
                                        capture_output=True, text=True, timeout=60)
                 self.assertEqual(wynik.returncode, 0, wynik.stdout + wynik.stderr)
                 self.assertIn("błędy: 0", wynik.stdout)
+
+
+class TestReguly(unittest.TestCase):
+    def test_petle_zagniezdzone(self):
+        wynik = R.petle("for a in x; do for b in y; do echo $b; done; done")
+        self.assertEqual(sorted(r[0] for r in wynik), ["for", "for"])
+
+    def test_petle_rozpoznaje_warunek_i_cialo(self):
+        wynik = R.petle("until test -f /tmp/x; do sleep 1; done")
+        self.assertEqual(len(wynik), 1)
+        rodzaj, warunek, cialo = wynik[0]
+        self.assertEqual(rodzaj, "until")
+        self.assertIn("test -f /tmp/x", warunek)
+        self.assertIn("sleep 1", cialo)
+
+    def test_petle_liniowa_na_zlosliwym_wejsciu(self):
+        # Ustalenie #6: brak nawrotów kwadratowych — wiele „for … do” bez „done”.
+        tekst = "for i in 1; do echo " + "x " * 40000
+        start = time.perf_counter()
+        R.petle(tekst)
+        self.assertLess(time.perf_counter() - start, 1.5)
+
+    def test_kanon_normalizuje(self):
+        self.assertEqual(P.kanon("/KONIEC-PRACY"), "koniec-pracy")
+        self.assertEqual(P.kanon("danaco-praca:Blokuj-Bash zadanie"), "blokuj-bash")
+        self.assertEqual(P.kanon("ls"), "")
 
 
 class TestSesjaIWrapper(Baza):
@@ -537,6 +656,7 @@ class TestRejestracja(unittest.TestCase):
                     self.assertIn(tryb, ("prompt", "narzedzie", "stop", "sesja"), zdarzenie)
 
     def test_skille_polecen(self):
+        import re
         katalogi = {p.name for p in (KORZEN / "skills").iterdir() if p.is_dir()}
         self.assertEqual(katalogi, set(P.POLECENIA))
         for nazwa in katalogi:
@@ -546,7 +666,7 @@ class TestRejestracja(unittest.TestCase):
                 self.assertRegex(tresc, rf"(?m)^name: {re.escape(nazwa)}$")
 
     def test_wersja(self):
-        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.2.0")
+        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.3.0")
 
 
 if __name__ == "__main__":

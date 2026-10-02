@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Straż dysku systemowego — hook PreToolUse dla narzędzi Bash i Write (Danaco).
+"""Straż dysku systemowego — hook PreToolUse dla narzędzi zapisujących i wykonujących (Danaco).
 
 Zasada właściciela (2026-10-02): na dysku systemowym `/` (30 GB) powstaje wyłącznie system —
 jednostki i timery systemd, konfiguracja w `/etc`, skrypty w `/usr/local/sbin` i `/usr/local/bin`,
@@ -45,11 +45,15 @@ KATALOG = {"cwd": ""}
 
 
 def _wczytaj_montowania() -> list[tuple[str, str]]:
-    """Lista (punkt montowania, urządzenie major:minor) z /proc/self/mountinfo."""
+    """Lista (punkt montowania, urządzenie major:minor) z tablicy montowań.
+
+    Domyślnie z `/proc/self/mountinfo`; `DANACO_PRACA_MOUNTINFO` wskazuje inny plik w tym
+    samym formacie (diagnostyka i testy na serwerze, gdzie `/danaco` jest osobnym dyskiem)."""
     if MONTOWANIA["tablica"] is not None:
         return MONTOWANIA["tablica"]
+    zrodlo = os.environ.get("DANACO_PRACA_MOUNTINFO") or "/proc/self/mountinfo"
     wynik = []
-    with open("/proc/self/mountinfo", encoding="utf-8", errors="replace") as plik:
+    with open(zrodlo, encoding="utf-8", errors="replace") as plik:
         for wiersz in plik:
             pola = wiersz.split()
             if len(pola) < 5:
@@ -391,14 +395,30 @@ def main() -> int:
         return test()
     try:
         zdarzenie = json.load(sys.stdin)
-        narzedzie = zdarzenie.get("tool_name")
+        narzedzie = str(zdarzenie.get("tool_name") or "")
         wejscie = zdarzenie.get("tool_input") or {}
+        if not isinstance(wejscie, dict):
+            wejscie = {}
         KATALOG["cwd"] = str(zdarzenie.get("cwd") or "")
-        if narzedzie == "Bash":
-            wynik = ocen(str(wejscie.get("command") or ""))
-        elif narzedzie == "Write":
-            wynik = ocen_zapis_pliku(str(wejscie.get("file_path") or ""))
-        else:
+        wynik = None
+        polecenie = None
+        if narzedzie in ("Bash", "PowerShell", "Monitor"):
+            polecenie = str(wejscie.get("command") or "")
+        elif narzedzie.startswith("mcp__"):
+            for pole in ("command", "cmd", "script", "polecenie"):
+                if isinstance(wejscie.get(pole), str):
+                    polecenie = wejscie[pole]
+                    break
+        if polecenie is not None:
+            wynik = ocen(polecenie)
+        if wynik is None:
+            for pole in ("file_path", "notebook_path", "path", "wyniki_do", "output", "out"):
+                cel = wejscie.get(pole)
+                if isinstance(cel, str) and cel:
+                    wynik = ocen_zapis_pliku(cel)
+                    if wynik:
+                        break
+        if wynik is None:
             return 0
     except Exception:  # noqa: BLE001 — usterka strażnika przepuszcza polecenie
         return 0

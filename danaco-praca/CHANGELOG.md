@@ -9,6 +9,45 @@ wersji 3.0.0 przez wydzielenie mechanizmu trybu ciągłej pracy z pluginu
 `danaco-plugin`; wpisy poniżej wersji 3.0.0 opisują ten mechanizm w jego dawnym
 miejscu i zostały przeniesione bez zmian.
 
+## [5.3.0] — 2026-10-02
+
+Tryb pracy ciągłej oddaje turę właścicielowi, a twarde zasady serwera obejmują każde
+narzędzie. Hartowanie stanu i reguł po przeglądzie bezpieczeństwa. Sprawdzane na kliencie
+Claude Code 2.1.287.
+
+### Zmienione
+
+- **Praca ciągła: oddawanie tury.** Usunięto bezpiecznik „3 próby zakończenia bez narzędzia →
+  przejście” wraz z komunikatem. Hook `Stop` nie pozwala agentowi zakończyć tury z własnej woli
+  (jedynym wyłączeniem trybu jest `/koniec-pracy`), ale co `DANACO_PRACA_PROG_ODDANIA` prób
+  (domyślnie 6) sam oddaje turę, a gdy klient zasygnalizuje nieobsłużone wejście właściciela —
+  od razu. Tryb przy tym zostaje włączony i wznawia pracę na następnej turze
+  (`UserPromptSubmit`/`SessionStart`). Dzięki temu właściciel zawsze może wysłać wiadomość i
+  zostaje ona odczytana. Licznik `bez_narzedzi` zastąpiony licznikiem `oddania`.
+
+### Bezpieczeństwo (przegląd 11 ustaleń)
+
+- **Straż sekretów i dysku dla każdego narzędzia** (#2/#3): nie tylko `Bash` i `Write`. Polecenie
+  powłoki dowolnego narzędzia (`Monitor`, `PowerShell`, MCP `uruchom` z polem `polecenie`)
+  przechodzi przez obie straże; odczyt pliku z sekretem (`Read`, `NotebookRead`) jest odrzucany,
+  a pliki wejściowe programów MCP nie wyniosą sekretu poza plik 600. `PreToolUse` dopasowuje nazwy
+  narzędzi MCP.
+- **Stan fail-safe** (#1): brak lub obcięcie klucza nie zdejmuje już blokad po cichu — nieweryfikowalny
+  stan utrzymuje ograniczenia (ostatnia odczytywalna migawka albo stan maksymalnie ograniczający).
+  Zapis klucza i pliku sesji jest atomowy (koniec z `FileExistsError` przy obciętym kluczu). `/tryb`
+  pokazuje realny stan.
+- **Ochrona przed wstrzyknięciem zawężona** (#4): łapie samodzielne polecenie wtyczki i token podany
+  agentowi (`claude`/`codex`), a nie wzmiankę w ścieżce (`ls /praca`) czy w komunikacie commita.
+- **Komunikat odmowy nie zdradza ścieżki klucza stanu** (#5).
+- **Rozbiór pętli liniowy** (#6): dawne wyrażenie z dwoma `.*?` i `re.S` miało złożoność kwadratową.
+  Polecenie powyżej `DANACO_PRACA_LIMIT_ANALIZY` (domyślnie 256 kB) jest blokowane.
+- **Normalizacja nazwy polecenia** (#7) w ochronie `Skill`/`SlashCommand`.
+- **Usunięto martwą obsługę `UserPromptExpansion`** (#8; zdarzenie nie było rejestrowane).
+- **Usunięto samo-dezaktywację straży dysku** (#9): straż działa zawsze, gdzie `/danaco` jest
+  osobnym dyskiem; `DANACO_PRACA_MOUNTINFO` wskazuje tablicę montowań do testów i diagnostyki.
+- **CI** (#11): `.github/workflows/testy.yml` uruchamia testy obu wtyczek i `plugin validate --strict`.
+- Każde ustalenie ma test regresyjny w `tests/test_hooki.py`.
+
 ## [5.2.0] — 2026-10-02
 
 Nazwy poleceń z czasownikiem na początku, żeby menu kontekstowe grupowało je po

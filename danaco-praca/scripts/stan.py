@@ -86,10 +86,25 @@ def pusty(sesja: str) -> dict:
     return {
         "wersja": 1,
         "sesja": sesja,
-        "praca": {"wlaczona": False, "zlecenie": "", "od": None, "bez_narzedzi": {}},
+        "praca": {"wlaczona": False, "zlecenie": "", "od": None, "oddania": 0},
         "blokady": {k: False for k in BLOKADY},
         "zmieniono": None,
     }
+
+
+def bezpieczny(sesja: str) -> dict:
+    """Stan maksymalnie ograniczający — fallback, gdy stanu nie da się zweryfikować.
+
+    Utrata albo uszkodzenie klucza lub podpisu nie może zdjąć blokad, więc przy braku
+    zweryfikowanej i braku odczytywalnej migawki utrzymujemy tryb pracy i wszystkie
+    blokady. Właściciel zwalnia je poleceniem /koniec-pracy i /odblokuj-… albo /tryb-wyczysc.
+    """
+    stan = pusty(sesja)
+    stan["praca"]["wlaczona"] = True
+    stan["praca"]["od"] = teraz()
+    for klucz in BLOKADY:
+        stan["blokady"][klucz] = True
+    return stan
 
 
 class Magazyn:
@@ -107,22 +122,42 @@ class Magazyn:
         with contextlib.suppress(OSError):
             os.chmod(self.katalog, 0o700)
 
-    def _klucz(self) -> bytes:
-        sciezka = os.path.join(self.katalog, "klucz")
+    @staticmethod
+    def _czytaj_klucz(sciezka: str) -> bytes | None:
+        """Klucz z pliku, gdy ma pełną długość; None, gdy go brak albo jest obcięty."""
         try:
             with open(sciezka, "rb") as plik:
                 klucz = plik.read()
-            if len(klucz) >= 32:
-                return klucz
         except FileNotFoundError:
-            pass
+            return None
+        return klucz if len(klucz) >= 32 else None
+
+    def _klucz(self) -> bytes:
+        """Klucz HMAC stanu. Zakłada go atomowo przy pierwszym użyciu; obcięty naprawia.
+
+        Brak albo obcięcie klucza nie może wysypać zapisu (`FileExistsError`): nowy klucz
+        trafia najpierw do pliku tymczasowego, a potem atomowo na miejsce. Przy wyścigu z
+        innym procesem używamy tego, co ostatecznie jest na dysku.
+        """
+        sciezka = os.path.join(self.katalog, "klucz")
+        klucz = self._czytaj_klucz(sciezka)
+        if klucz is not None:
+            return klucz
         self._przygotuj()
-        klucz = secrets.token_bytes(32)
-        deskryptor = os.open(sciezka, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        tymczasowy = f"{sciezka}.{secrets.token_hex(8)}.nowy"
+        deskryptor = os.open(tymczasowy, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            os.write(deskryptor, klucz)
+            os.write(deskryptor, secrets.token_bytes(32))
         finally:
             os.close(deskryptor)
+        try:
+            os.replace(tymczasowy, sciezka)
+        except OSError:
+            with contextlib.suppress(OSError):
+                os.unlink(tymczasowy)
+        klucz = self._czytaj_klucz(sciezka)
+        if klucz is None:
+            raise OSError("nie udało się ustanowić klucza stanu danaco-praca")
         return klucz
 
     def _podpis(self, dane: dict) -> str:
@@ -150,8 +185,9 @@ class Magazyn:
     def wczytaj(self, sesja: str) -> dict:
         sesja = bezpieczna_sesja(sesja)
         sciezka = self._plik(sesja)
+        istnieje_plik = os.path.exists(sciezka)
         naruszenie = False
-        if os.path.exists(sciezka):
+        if istnieje_plik:
             try:
                 with open(sciezka, encoding="utf-8") as plik:
                     zapis = json.load(plik)
@@ -162,35 +198,55 @@ class Magazyn:
                 naruszenie = True
         elif not os.path.isdir(self.katalog):
             return pusty(sesja)
-        odtworzony = self._z_dziennika(sesja)
-        if naruszenie or odtworzony is not None:
-            # Plik zmieniony albo skasowany poza hookiem: wraca ostatnia podpisana migawka.
-            stan = odtworzony if odtworzony is not None else pusty(sesja)
+
+        zweryfikowana, dowolna = self._skan_dziennika(sesja)
+        if zweryfikowana is not None:
+            # Plik sesji skasowany lub zmieniony, ale klucz i dziennik całe: wraca podpisana migawka.
+            stan = self._uzupelnij(zweryfikowana, sesja)
             with contextlib.suppress(OSError):
                 self.dopisz({"zdarzenie": "naruszenie-stanu", "sesja": sesja,
                              "opis": "plik stanu zmieniony albo usunięty poza hookiem - odtworzono z dziennika"})
                 self._zapisz_plik(stan)
             return stan
+        if naruszenie or dowolna is not None:
+            # Nie da się zweryfikować stanu (utracony/uszkodzony klucz lub podpis), a sesja miała
+            # zapisany stan: fail-safe. Bierzemy ostatnią odczytywalną migawkę (niezależnie od
+            # podpisu), a gdy jej brak - stan maksymalnie ograniczający. Blokady zostają. Sam wpis
+            # w dzienniku bez migawki (np. odmowa) nie liczy się jako stan - sesja bez trybów
+            # i bez pliku stanu wraca pusta.
+            stan = self._uzupelnij(dowolna, sesja) if dowolna is not None else bezpieczny(sesja)
+            with contextlib.suppress(OSError):
+                self.dopisz({"zdarzenie": "stan-bezpieczny", "sesja": sesja,
+                             "opis": "stanu nie dało się zweryfikować - utrzymano ograniczenia (fail-safe)"})
+                self._zapisz_plik(stan)
+            return stan
         return pusty(sesja)
 
-    def _z_dziennika(self, sesja: str) -> dict | None:
-        wynik = None
+    def _skan_dziennika(self, sesja: str) -> tuple[dict | None, dict | None]:
+        """(ostatnia zweryfikowana migawka, ostatnia odczytywalna migawka) stanu sesji z dziennika."""
+        zweryfikowana: dict | None = None
+        dowolna: dict | None = None
+        igla, igla_bez = f'"sesja": "{sesja}"', f'"sesja":"{sesja}"'
         for sciezka in (self.dziennik + ".1", self.dziennik):
             try:
                 with open(sciezka, encoding="utf-8") as plik:
                     for wiersz in plik:
-                        if f'"sesja": "{sesja}"' not in wiersz or '"migawka"' not in wiersz:
+                        if igla not in wiersz and igla_bez not in wiersz:
                             continue
                         try:
                             wpis = json.loads(wiersz)
                         except ValueError:
                             continue
+                        if wpis.get("sesja") != sesja:
+                            continue
                         migawka = wpis.get("migawka")
-                        if isinstance(migawka, dict) and self._zgodny(migawka, wpis.get("podpis_migawki")):
-                            wynik = migawka
+                        if isinstance(migawka, dict):
+                            dowolna = migawka
+                            if self._zgodny(migawka, wpis.get("podpis_migawki")):
+                                zweryfikowana = migawka
             except OSError:
                 continue
-        return self._uzupelnij(wynik, sesja) if wynik is not None else None
+        return zweryfikowana, dowolna
 
     @staticmethod
     def _uzupelnij(stan: dict, sesja: str) -> dict:
@@ -209,11 +265,16 @@ class Magazyn:
     def _zapisz_plik(self, stan: dict) -> None:
         self._przygotuj()
         sciezka = self._plik(stan["sesja"])
-        tymczasowy = sciezka + ".nowy"
-        with open(tymczasowy, "w", encoding="utf-8") as plik:
-            json.dump({"stan": stan, "podpis": self._podpis(stan)}, plik, ensure_ascii=False)
-        os.chmod(tymczasowy, 0o600)
-        os.replace(tymczasowy, sciezka)
+        tymczasowy = f"{sciezka}.{secrets.token_hex(6)}.nowy"
+        try:
+            with open(tymczasowy, "w", encoding="utf-8") as plik:
+                json.dump({"stan": stan, "podpis": self._podpis(stan)}, plik, ensure_ascii=False)
+            os.chmod(tymczasowy, 0o600)
+            os.replace(tymczasowy, sciezka)
+        except OSError:
+            with contextlib.suppress(OSError):
+                os.unlink(tymczasowy)
+            raise
 
     def zapisz(self, stan: dict, wpis: dict | None = None) -> None:
         """Zapis stanu; z `wpis` także wpis do dziennika z podpisaną migawką (zmiana trybu)."""

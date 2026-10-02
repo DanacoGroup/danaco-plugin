@@ -89,6 +89,19 @@ PROBY = [
         ],
     },
     {
+        "nazwa": "3b-straze-sekretow-kazde-narzedzie",
+        "prompt": "Sprawdź konfigurację.",
+        "scenariusz": [
+            {"narzedzie": "Monitor", "wejscie": {"command": "cat /etc/danaco/x.env", "description": "podgląd"}},
+            {"narzedzie": "mcp__danaco-programy__uruchom", "wejscie": {"polecenie": "cat /root/.env"}},
+            {"narzedzie": "mcp__danaco-programy__uruchom", "wejscie": {"polecenie": "echo ok", "pliki": ["~/.ssh/id_ed25519"]}},
+            {"narzedzie": "Read", "wejscie": {"file_path": "~/.ssh/id_ed25519"}},
+            {"tekst": "Koniec sprawdzania."},
+            {"tekst": "Koniec sprawdzania."},
+            {"tekst": "Koniec sprawdzania."},
+        ],
+    },
+    {
         "nazwa": "4-blokady-wlaczone",
         "prompt": "/blokuj-bash\n/blokuj-podagenci",
         "scenariusz": [
@@ -160,6 +173,8 @@ def uruchom(cli: str, baza: Path, proba: dict, sesja: str, pierwsza: bool, wspol
             "LANG": "C.UTF-8", "CLAUDE_CONFIG_DIR": wspolne["profil"],
             "CLAUDE_CODE_OAUTH_TOKEN": "atrapa-nie-sekret", "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1",
+            # Niski próg oddania tury, żeby próba kończyła się szybko (zamiast domyślnych 6).
+            "DANACO_PRACA_PROG_ODDANIA": "3",
         }
         polecenie = [cli, "-p", proba["prompt"], "--output-format", "stream-json", "--verbose",
                      "--include-hook-events", "--plugin-dir", str(WTYCZKA), "--dangerously-skip-permissions",

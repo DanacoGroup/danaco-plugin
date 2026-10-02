@@ -43,8 +43,31 @@ _NAZWY = "|".join(sorted((re.escape(n) for n in POLECENIA), key=len, reverse=Tru
 WIERSZ = re.compile(rf"^\s*/(?:danaco-praca:)?({_NAZWY})(?:[ \t]+(.*))?\s*$")
 ROZWINIETE = re.compile(rf"<command-name>\s*/?(?:danaco-praca:)?({_NAZWY})\s*</command-name>")
 ARGUMENTY = re.compile(r"<command-args>(.*?)</command-args>", re.S)
-#: Wystąpienie polecenia jako tokenu w dowolnym tekście (do straży przed wstrzyknięciem).
+
+
+#: Polecenie jako token w dowolnym tekście — używane wąsko: tylko gdy polecenie powłoki
+#: podaje je agentowi (claude/codex). Samą wzmiankę w ścieżce czy komunikacie commita
+#: rozpoznanie w `rozpoznaj` i tak pomija, bo nie jest samodzielnym poleceniem wiersza.
 TOKEN = re.compile(rf"(?:^|[\s\"'`(=\\])/(?:danaco-praca:)?({_NAZWY})(?=$|[\s\"'`)\\.,;:!?])", re.M)
+
+
+def zawiera_token(tekst: str) -> bool:
+    return bool(TOKEN.search(tekst or ""))
+
+
+def kanon(surowa: str) -> str:
+    """Kanoniczna nazwa polecenia z surowego tekstu albo "" (znormalizowana).
+
+    Zdejmuje odstępy, wiodący `/`, prefiks `danaco-praca:` i ewentualny argument, a nazwę
+    porównuje bez względu na wielkość liter. Dzięki temu `Skill`/`SlashCommand` z nazwą
+    `/Koniec-Pracy`, `danaco-praca:koniec-pracy` czy `koniec-pracy zadanie` rozpoznajemy
+    tak samo jak polecenie właściciela.
+    """
+    czesci = (surowa or "").strip().lstrip("/").split()
+    if not czesci:
+        return ""
+    nazwa = czesci[0].split(":")[-1].lower()
+    return nazwa if nazwa in POLECENIA else ""
 
 
 def rozpoznaj(tekst: str) -> tuple[list[tuple[str, str]], str]:

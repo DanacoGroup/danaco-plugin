@@ -163,15 +163,46 @@ def w_tle(tekst: str, wejscie: dict) -> bool:
     return bool(re.search(r"(?<![&>|])&\s*($|\n|\))", _normalizuj(bez_heredoc(tekst))))
 
 
-PETLA = re.compile(r"(?<![\w-])(for|while|until|select)\b(.*?)(?<![\w-])do\b(.*?)(?<![\w-])done\b", re.S)
+#: Polecenie dłuższe niż ten limit jest zbyt duże, by bezpiecznie je przeanalizować.
+#: Przy aktywnym trybie/blokadzie takie polecenie BLOKUJEMY (patrz hak.ocen_narzedzie),
+#: zamiast ryzykować, że rozbiór go nie obejmie. Zmienia DANACO_PRACA_LIMIT_ANALIZY.
+LIMIT_ANALIZY = max(4096, int(os.environ.get("DANACO_PRACA_LIMIT_ANALIZY", str(256 * 1024)) or 256 * 1024))
+
+#: Słowa kluczowe pętli powłoki jako osobne tokeny (jedno przejście, bez nawrotów).
+SLOWO_PETLI = re.compile(r"(?<![\w-])(for|while|until|select|do|done)(?![\w-])")
+_POCZATKI_PETLI = {"for", "while", "until", "select"}
+
+
+def za_duze_do_analizy(tekst: str) -> bool:
+    return len(tekst) > LIMIT_ANALIZY
 
 
 def petle(tekst: str) -> list[tuple[str, str, str]]:
-    """(rodzaj, warunek, ciało) pętli powłoki w tekście polecenia (z wnętrzem bash -c '…')."""
-    wynik = []
+    """(rodzaj, warunek, ciało) pętli powłoki w tekście polecenia (z wnętrzem bash -c '…').
+
+    Rozbiór jest liniowy: jedno przejście tokenizera po słowach kluczowych i dopasowanie
+    `for/while/until/select … do … done` na stosie (zagnieżdżenia włącznie). Dawne
+    wyrażenie z dwoma `.*?` i `re.S` miało złożoność kwadratową na spreparowanym wejściu.
+    """
+    wynik: list[tuple[str, str, str]] = []
     for fragment in fragmenty(_normalizuj(bez_heredoc(tekst))):
-        for m in PETLA.finditer(fragment):
-            wynik.append((m.group(1), m.group(2), m.group(3)))
+        stos: list[dict] = []
+        for m in SLOWO_PETLI.finditer(fragment):
+            slowo = m.group(1)
+            if slowo in _POCZATKI_PETLI:
+                stos.append({"rodzaj": slowo, "po_slowie": m.end(), "cialo_start": None})
+            elif slowo == "do":
+                for ramka in reversed(stos):
+                    if ramka["cialo_start"] is None:
+                        ramka["warunek"] = fragment[ramka["po_slowie"]:m.start()]
+                        ramka["cialo_start"] = m.end()
+                        break
+            else:  # done
+                for i in range(len(stos) - 1, -1, -1):
+                    if stos[i]["cialo_start"] is not None:
+                        ramka = stos.pop(i)
+                        wynik.append((ramka["rodzaj"], ramka["warunek"], fragment[ramka["cialo_start"]:m.start()]))
+                        break
     return wynik
 
 
@@ -342,11 +373,15 @@ def tekst_zapisuje(tekst: str) -> bool:
 # --- blokady ---------------------------------------------------------------------------------------
 
 def polecenie_powloki(narzedzie: str, wejscie: dict) -> str | None:
-    """Tekst polecenia narzędzia wykonującego powłokę (Bash, PowerShell, Monitor, MCP z polem command)."""
+    """Tekst polecenia narzędzia wykonującego powłokę.
+
+    Obejmuje `Bash`, `PowerShell`, `Monitor` oraz narzędzia MCP uruchamiające polecenie
+    powłoki — w tym serwer `danaco-programy` (`mcp__…__uruchom`, pole `polecenie`).
+    """
     if narzedzie in ("Bash", "PowerShell", "Monitor"):
         return str(wejscie.get("command") or "")
     if narzedzie.startswith("mcp__"):
-        for pole in ("command", "cmd", "script"):
+        for pole in ("command", "cmd", "script", "polecenie"):
             if isinstance(wejscie.get(pole), str):
                 return wejscie[pole]
     return None
@@ -618,6 +653,14 @@ def blokada_podagentow_powloka(tekst: str) -> str | None:
         if n == "codex" and "exec" in r[1:]:
             return "Podagenci są zablokowani poleceniem właściciela /blokuj-podagenci (`codex exec`). Wykonaj tę pracę sam"
     return None
+
+
+def uruchamia_agenta(tekst: str) -> bool:
+    """Czy polecenie powłoki uruchamia klienta Claude albo codex (biorący prompt z argumentu/wejścia)."""
+    for r, _, _ in polecenia(tekst):
+        if nazwa(r) in CLAUDE or nazwa(r) == "codex":
+            return True
+    return False
 
 
 def wznowienie_sesji(tekst: str) -> str | None:

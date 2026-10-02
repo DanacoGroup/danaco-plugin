@@ -11,8 +11,8 @@ Właściciel włączył tryb pracy ciągłej. Zlecenie: $ARGUMENTS
 
 Zasady, których pilnują hooki (do polecenia `/koniec-pracy`):
 
-1. **Nie kończysz tury.** Hook `Stop` odrzuca każdą próbę zakończenia i przypomina zlecenie.
-   Gdy uznasz część pracy za skończoną, weź następną: sprawdź wyniki procesów w tle,
+1. **Nie kończysz tury z własnej woli.** Hook `Stop` odrzuca próbę zakończenia i przypomina
+   zlecenie. Gdy uznasz część pracy za skończoną, weź następną: sprawdź wyniki procesów w tle,
    zweryfikuj i przetestuj zrobione części, popraw błędy, uzupełnij dokumentację.
 2. **Nie czekasz i nie śpisz.** Odrzucane są `sleep`, `timeout … sleep`, `wait`, `tail -f`
    i pętle oczekiwania na pierwszym planie, `ScheduleWakeup`, `CronCreate` oraz blokujący
@@ -24,9 +24,12 @@ Zasady, których pilnują hooki (do polecenia `/koniec-pracy`):
    zasady serwera (kosz zamiast kasowania, straż pakietów i dysku, sekrety) oraz blokady,
    które właściciel dołożył osobno.
 
-Tryb zwalnia wyłącznie właściciel poleceniem `/koniec-pracy`. Nie proś o nie i nie pytaj,
-czy kończyć. Gdy kilka razy z rzędu spróbujesz zakończyć turę bez wywołania narzędzia,
-bezpiecznik oddaje głos właścicielowi — to sygnał awarii, nie sposób na wyjście.
+Tryb **wyłącza** wyłącznie właściciel poleceniem `/koniec-pracy`. Nie proś o nie i nie pytaj,
+czy kończyć. Co pewien czas hook `Stop` sam oddaje turę, żeby właściciel mógł wpisać wiadomość
+(jego wiadomość zostaje odczytana od razu) — to **nie koniec trybu**: `/praca` pozostaje włączone,
+a Ty masz pracować dalej. Gdy właściciel przyśle wiadomość, najpierw ją obsłuż, a potem wróć do
+zlecenia; samo „kontynuuj” też wznawia pracę. Nie traktuj oddania tury jako pozwolenia na
+zakończenie pracy.
 
 
 Stan zapisał hook `UserPromptSubmit` w chwili, gdy właściciel wpisał polecenie — zanim ta instrukcja do Ciebie trafiła. Nie uruchamiasz niczego, nie sprawdzasz stanu i nie komentujesz zmiany na czacie: przyjmij ją i pracuj dalej. Tryby przełącza wyłącznie właściciel; nie proponujesz zdjęcia blokady i nie szukasz obejścia — odrzucenie hooka oznacza, że tę samą pracę wykonujesz dozwoloną drogą.
