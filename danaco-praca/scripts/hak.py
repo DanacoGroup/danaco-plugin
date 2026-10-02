@@ -116,7 +116,7 @@ def obsluz_polecenia(zdarzenie: dict) -> int:
             widoki.append("Ostatnie wpisy dziennika tej sesji:\n" + "\n".join(S.ogon_dziennika(magazyn, sesja)))
         elif rodzaj == ("widok", "sesja-id"):
             widoki.append(f"Identyfikator tej sesji: {zdarzenie.get('session_id') or '(nieznany)'}\n"
-                          f"Przejmij ją z innego konta: /przejmij {zdarzenie.get('session_id') or '<id>'}")
+                          f"Przejmij ją z innego konta: /sesja-przejmij {zdarzenie.get('session_id') or '<id>'}")
         elif rodzaj == ("widok", "sesje"):
             widoki.append(wywolaj_przejmij(["--lista"]))
         elif rodzaj == ("akcja", "przejmij"):
@@ -182,8 +182,8 @@ def wywolaj_przejmij(argumenty: list[str]) -> str:
 def przejmij_sesje(identyfikator: str) -> str:
     identyfikator = (identyfikator or "").strip()
     if not identyfikator:
-        return ("Podaj identyfikator sesji: `/przejmij <id>` (ID bieżącej sesji pokaże `/sesja-id`, "
-                "spis sesji — `/sesje`).")
+        return ("Podaj identyfikator sesji: `/sesja-przejmij <id>` (ID bieżącej sesji pokaże `/sesja-id`, "
+                "spis sesji — `/sesja-lista`).")
     if not BEZPIECZNY_ID.match(identyfikator):
         return f"Niepoprawny identyfikator sesji: {identyfikator!r}."
     wynik = wywolaj_przejmij([identyfikator])
@@ -262,8 +262,8 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
             return ("deny", f"/{nazwa} przełącza wyłącznie właściciel, wpisując polecenie na czacie")
     if powloka is not None or re.search(r"(?i)send|message|notif|terminal|prompt|slash|push", narzedzie):
         if P.TOKEN.search(surowe if powloka is None else powloka):
-            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /…-blokuj, /…-odblokuj, /tryb, "
-                            "/przejmij) wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
+            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /blokuj-…, /odblokuj-…, /tryb, "
+                            "/sesja-przejmij) wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
     if S.aktywne(stan):
         wynik = chroni_mechanizm(narzedzie, wejscie, powloka, surowe, cwd)
         if wynik:
@@ -274,7 +274,7 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
                 return ("deny", wynik)
     # 3. Blokady sesji.
     if blokady["bash"] and (narzedzie in ("Bash", "PowerShell", "Monitor") or (powloka is not None and narzedzie.startswith("mcp__"))):
-        return ("deny", f"Narzędzie {narzedzie} jest zablokowane poleceniem właściciela /bash-blokuj. "
+        return ("deny", f"Narzędzie {narzedzie} jest zablokowane poleceniem właściciela /blokuj-bash. "
                         "Pracuj narzędziami Read, Grep, Glob, Edit i Write")
     if blokady["podagenci"]:
         wynik = R.blokada_podagentow_narzedzie(narzedzie) or (R.blokada_podagentow_powloka(powloka) if powloka else None)
@@ -285,27 +285,27 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
         wynik = (R.blokada_czekania_narzedzie(narzedzie, wejscie, scisle)
                  or (R.blokada_czekania(powloka, wejscie, scisle) if powloka and narzedzie != "Monitor" else None))
         if wynik:
-            zrodlo = "/praca" if praca and not blokady["sleep"] else "/sleep-blokuj"
+            zrodlo = "/praca" if praca and not blokady["sleep"] else "/blokuj-sleep"
             return ("deny", f"{wynik} [{zrodlo}]")
     if blokady["python"]:
         wynik = R.blokada_python_plik(narzedzie, wejscie) or (R.blokada_python(powloka, cwd) if powloka else None)
         if wynik:
             return ("deny", wynik)
     if blokady["pytania"] and narzedzie in ("AskUserQuestion", "ExitPlanMode"):
-        return ("deny", "Pytania do właściciela są wstrzymane poleceniem /pytania-blokuj: przyjmij "
+        return ("deny", "Pytania do właściciela są wstrzymane poleceniem /blokuj-pytania: przyjmij "
                         "najrozsądniejsze założenie, zanotuj je i pracuj dalej")
     if blokady["siec"]:
         if narzedzie in ("WebFetch", "WebSearch"):
-            return ("deny", f"Sieć jest zablokowana poleceniem właściciela /siec-blokuj (narzędzie {narzedzie}). "
-                            "Pracuj na danych lokalnych; dostęp do sieci wróci po /siec-odblokuj")
+            return ("deny", f"Sieć jest zablokowana poleceniem właściciela /blokuj-siec (narzędzie {narzedzie}). "
+                            "Pracuj na danych lokalnych; dostęp do sieci wróci po /odblokuj-siec")
         if powloka:
             wynik = R.blokada_sieci(powloka)
             if wynik:
                 return ("deny", wynik)
     if blokady["zapis"]:
         if narzedzie in NARZEDZIA_PLIKOWE:
-            return ("deny", "Tryb tylko-odczyt jest włączony poleceniem właściciela /zapis-blokuj "
-                            f"(narzędzie {narzedzie}). Oglądaj i analizuj; pliki zmienisz po /zapis-odblokuj")
+            return ("deny", "Tryb tylko-odczyt jest włączony poleceniem właściciela /blokuj-zapis "
+                            f"(narzędzie {narzedzie}). Oglądaj i analizuj; pliki zmienisz po /odblokuj-zapis")
         if powloka:
             wynik = R.blokada_zapisu(powloka)
             if wynik:

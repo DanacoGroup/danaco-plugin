@@ -11,6 +11,9 @@ Claude Code dotyczy weryfikacji tamtego mechanizmu.
 ## 3.3.1 (02.10.2026)
 - Odwołania do poleceń `danaco-praca` zaktualizowane do 5.x (polecenia `/praca`, `/<temat>-blokuj`, komendy sesji zamiast `/pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.
 
+## 3.3.1 (02.10.2026)
+- Odwołania do poleceń `danaco-praca` zaktualizowane do 5.x (polecenia `/praca`, blokady `/blokuj-<temat>`, stan `/tryb-*`, sesje `/sesja-*` zamiast `/pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.
+
 ## 3.3.0 (29.09.2026)
 - Serwer MCP danaco-programy: katalog wymiany na nexusie liczony od konta, jako które loguje się SSH (`id -un` na nexusie) - usługi na kontach systemowych mogą korzystać z `uruchom`.
 

@@ -9,6 +9,31 @@ wersji 3.0.0 przez wydzielenie mechanizmu trybu ciągłej pracy z pluginu
 `danaco-plugin`; wpisy poniżej wersji 3.0.0 opisują ten mechanizm w jego dawnym
 miejscu i zostały przeniesione bez zmian.
 
+## [5.2.0] — 2026-10-02
+
+Nazwy poleceń z czasownikiem na początku, żeby menu kontekstowe grupowało je po
+przedrostku. Sprawdzane na kliencie Claude Code 2.1.287.
+
+### Zmienione (niezgodne wstecz)
+
+- **Blokady: czasownik pierwszy.** Pary `/<temat>-blokuj` / `/<temat>-odblokuj` zmienione
+  na `/blokuj-<temat>` / `/odblokuj-<temat>`, dla wszystkich dziesięciu tematów (bash,
+  python, masowe, skrypty, sleep, podagenci, sudo, siec, zapis, pytania). W menu wszystkie
+  `/blokuj-*` stoją teraz razem i wszystkie `/odblokuj-*` razem. Np. `/bash-blokuj`→
+  `/blokuj-bash`, `/sudo-odblokuj`→`/odblokuj-sudo`.
+- **Stan pod przedrostkiem `/tryb`:** `/dziennik`→`/tryb-dziennik`,
+  `/wyczysc-tryby`→`/tryb-wyczysc` (podgląd pozostaje `/tryb`).
+- **Sesje pod przedrostkiem `/sesja-`:** `/sesje`→`/sesja-lista`,
+  `/przejmij`→`/sesja-przejmij` (`/sesja-id` bez zmian).
+- `/praca` i `/koniec-pracy` bez zmian.
+
+### Bez zmian w działaniu
+
+- Reguły blokad, straże, bezpiecznik pętli, ochrona stanu i komendy sesji działają jak
+  w 5.1.0 — zmieniły się wyłącznie nazwy poleceń i komunikaty, które je przywołują.
+- README, `CHANGELOG`, 28 skilli, `marketplace.json`, opis w `plugin.json` i testy
+  (53 testy) zaktualizowane do nowej konwencji; `claude plugin validate --strict` przechodzi.
+
 ## [5.1.0] — 2026-10-02
 
 Rozbudowa przed publikacją: komendy przejmowania sesji, nowe blokady i jedna, spójna

@@ -5,15 +5,17 @@ Polecenia nie są prośbą w instrukcji: stan zapisuje hook, a każdą regułę 
 `PreToolUse` i `Stop`. Do tego wtyczka niesie dwie twarde zasady serwera Danaco: straż
 sekretów i straż dysku systemowego.
 
-Wersja 5.1.0. Pełny opis zmian w `CHANGELOG.md` (5.1.0 — komendy sesji, nowe blokady,
-nowa konwencja nazw; 5.0.0 — przebudowa od podstaw względem 4.7.0).
+Wersja 5.2.0. Pełny opis zmian w `CHANGELOG.md` (5.2.0 — nazwy z czasownikiem na początku;
+5.1.0 — komendy sesji i nowe blokady; 5.0.0 — przebudowa od podstaw względem 4.7.0).
 
 ## Konwencja nazw
 
-Jedna zasada dla wszystkich blokad: **`/<temat>-blokuj`** włącza blokadę,
-**`/<temat>-odblokuj`** ją zdejmuje. Tryb pracy ciągłej ma własną, naturalną nazwę
-(`/praca` ↔ `/koniec-pracy`), bo jest trybem, nie blokadą. Polecenia stanu i sesji są
-pojedyncze (`/tryb`, `/dziennik`, `/wyczysc-tryby`, `/sesja-id`, `/sesje`, `/przejmij`).
+Czasownik stoi na początku, żeby menu kontekstowe grupowało polecenia po przedrostku.
+Blokady to pary **`/blokuj-<temat>`** ↔ **`/odblokuj-<temat>`** — w menu wszystkie
+`/blokuj-*` stoją razem i wszystkie `/odblokuj-*` razem. Polecenia stanu mają przedrostek
+**`/tryb`** (`/tryb`, `/tryb-dziennik`, `/tryb-wyczysc`), a sesji **`/sesja-`**
+(`/sesja-id`, `/sesja-lista`, `/sesja-przejmij`). Tryb pracy ciągłej ma własną, naturalną
+nazwę (`/praca` ↔ `/koniec-pracy`), bo jest trybem, nie blokadą.
 
 ## Polecenia
 
@@ -23,31 +25,31 @@ pojedyncze (`/tryb`, `/dziennik`, `/wyczysc-tryby`, `/sesja-id`, `/sesje`, `/prz
 | --- | --- | --- |
 | `/praca [zlecenie]` | `/koniec-pracy` | Praca ciągła agenta głównego: `Stop` odrzuca zakończenie tury z przypomnieniem zlecenia; odrzucane jest czekanie na pierwszym planie (`sleep`, `wait`, pętle oczekiwania), `ScheduleWakeup`, `CronCreate` i blokujący odbiór wyniku. Procesy, agenci i monitoring (także narzędzie `Monitor`) wolno uruchamiać. Podagenci oddają wynik normalnie. Bez innych ograniczeń narzędzi i miejsc zapisu. |
 
-### Blokady (para `/<temat>-blokuj` ↔ `/<temat>-odblokuj`)
+### Blokady (para `/blokuj-<temat>` ↔ `/odblokuj-<temat>`)
 
 | Temat | Blokuje | Zwalnia | Co egzekwuje hook |
 | --- | --- | --- | --- |
-| Bash | `/bash-blokuj` | `/bash-odblokuj` | narzędzia `Bash`, `PowerShell`, `Monitor` i narzędzia MCP wykonujące polecenia powłoki |
-| Python | `/python-blokuj` | `/python-odblokuj` | `python`, `python3`, `pip`, `uv run`, `uvx`, `pytest`, `poetry run` i pokrewne, skrypty `.py` i pliki z interpreterem Pythona, zapis `.py` przekierowaniem i `tee`, tworzenie `.py` narzędziem `Write` oraz `NotebookEdit` (edycja istniejącego `.py` narzędziem `Edit` przechodzi) |
-| Praca masowa | `/masowe-blokuj` | `/masowe-odblokuj` | edytory w miejscu na więcej niż jednym pliku, z maską albo rekurencyjnie; `find -exec`/`-delete`; `xargs`/`parallel` z zapisem; pętle po plikach z zapisem; kod i skrypty zapisujące w pętli; `patch`, `git apply`, `git reset --hard`, `git checkout .`; `UPDATE`/`DELETE` bez `WHERE` |
-| Pisanie ręczne | `/skrypty-blokuj` | `/skrypty-odblokuj` | generowanie treści poleceniem lub skryptem: przekierowania i `tee` do plików (poza `.log`/`.out`/`.err`, `/tmp`, `$TMPDIR`), edytory w miejscu, `patch`, `truncate`, `dd of=`, kod i skrypty zapisujące pliki. Pliki zmienia się narzędziami `Edit`/`Write` |
-| Uśpienie | `/sleep-blokuj` | `/sleep-odblokuj` | `sleep`, `timeout … sleep`, `wait`, `tail -f`, `watch`, pętle oczekiwania i odpytywania, uśpienie w kodzie, `ScheduleWakeup`, `Monitor`, `CronCreate`, blokujący odbiór wyniku — także w tle (poza pętlą monitoringu z dziennikiem) i poza trybem pracy. Ściślej niż sam `/praca` |
-| Podagenci | `/podagenci-blokuj` | `/podagenci-odblokuj` | narzędzia `Agent`, `Task`, `Workflow`, `TeamCreate` oraz `claude -p` i `codex exec` |
-| sudo | `/sudo-blokuj` | `/sudo-odblokuj` | `sudo`, `doas`, `pkexec`, `run0`, `su -c` (także w `ssh host '…'`, `bash -c '…'`, `find -exec`). Domyślnie sudo zgodnie z kontem |
-| Sieć | `/siec-blokuj` | `/siec-odblokuj` | narzędzia `WebFetch`, `WebSearch` oraz w powłoce `curl`, `wget`, `nc`, `ssh`, `scp`, `sftp`, zdalny `rsync`, `git clone`/`fetch`/`pull`/`push` i pobieranie menedżerami pakietów (`pip`/`npm`/`uv`/`cargo`/`hf` install/download) |
-| Zapis plików (tylko-odczyt) | `/zapis-blokuj` | `/zapis-odblokuj` | narzędzia `Write`, `Edit`, `MultiEdit`, `NotebookEdit` oraz w powłoce każda zmiana plików (`rm`, `mv`, `cp`, `mkdir`, `touch`, `tee`, przekierowania poza `/tmp`/`$TMPDIR`/dziennikami, edytory w miejscu, `git commit`/`add`/`reset`/`checkout`…). Odczyt, analiza i budowa przechodzą |
-| Pytania | `/pytania-blokuj` | `/pytania-odblokuj` | narzędzia `AskUserQuestion` i `ExitPlanMode` — agent przyjmuje najrozsądniejsze założenie i pracuje dalej |
+| Bash | `/blokuj-bash` | `/odblokuj-bash` | narzędzia `Bash`, `PowerShell`, `Monitor` i narzędzia MCP wykonujące polecenia powłoki |
+| Python | `/blokuj-python` | `/odblokuj-python` | `python`, `python3`, `pip`, `uv run`, `uvx`, `pytest`, `poetry run` i pokrewne, skrypty `.py` i pliki z interpreterem Pythona, zapis `.py` przekierowaniem i `tee`, tworzenie `.py` narzędziem `Write` oraz `NotebookEdit` (edycja istniejącego `.py` narzędziem `Edit` przechodzi) |
+| Praca masowa | `/blokuj-masowe` | `/odblokuj-masowe` | edytory w miejscu na więcej niż jednym pliku, z maską albo rekurencyjnie; `find -exec`/`-delete`; `xargs`/`parallel` z zapisem; pętle po plikach z zapisem; kod i skrypty zapisujące w pętli; `patch`, `git apply`, `git reset --hard`, `git checkout .`; `UPDATE`/`DELETE` bez `WHERE` |
+| Pisanie ręczne | `/blokuj-skrypty` | `/odblokuj-skrypty` | generowanie treści poleceniem lub skryptem: przekierowania i `tee` do plików (poza `.log`/`.out`/`.err`, `/tmp`, `$TMPDIR`), edytory w miejscu, `patch`, `truncate`, `dd of=`, kod i skrypty zapisujące pliki. Pliki zmienia się narzędziami `Edit`/`Write` |
+| Uśpienie | `/blokuj-sleep` | `/odblokuj-sleep` | `sleep`, `timeout … sleep`, `wait`, `tail -f`, `watch`, pętle oczekiwania i odpytywania, uśpienie w kodzie, `ScheduleWakeup`, `Monitor`, `CronCreate`, blokujący odbiór wyniku — także w tle (poza pętlą monitoringu z dziennikiem) i poza trybem pracy. Ściślej niż sam `/praca` |
+| Podagenci | `/blokuj-podagenci` | `/odblokuj-podagenci` | narzędzia `Agent`, `Task`, `Workflow`, `TeamCreate` oraz `claude -p` i `codex exec` |
+| sudo | `/blokuj-sudo` | `/odblokuj-sudo` | `sudo`, `doas`, `pkexec`, `run0`, `su -c` (także w `ssh host '…'`, `bash -c '…'`, `find -exec`). Domyślnie sudo zgodnie z kontem |
+| Sieć | `/blokuj-siec` | `/odblokuj-siec` | narzędzia `WebFetch`, `WebSearch` oraz w powłoce `curl`, `wget`, `nc`, `ssh`, `scp`, `sftp`, zdalny `rsync`, `git clone`/`fetch`/`pull`/`push` i pobieranie menedżerami pakietów (`pip`/`npm`/`uv`/`cargo`/`hf` install/download) |
+| Zapis plików (tylko-odczyt) | `/blokuj-zapis` | `/odblokuj-zapis` | narzędzia `Write`, `Edit`, `MultiEdit`, `NotebookEdit` oraz w powłoce każda zmiana plików (`rm`, `mv`, `cp`, `mkdir`, `touch`, `tee`, przekierowania poza `/tmp`/`$TMPDIR`/dziennikami, edytory w miejscu, `git commit`/`add`/`reset`/`checkout`…). Odczyt, analiza i budowa przechodzą |
+| Pytania | `/blokuj-pytania` | `/odblokuj-pytania` | narzędzia `AskUserQuestion` i `ExitPlanMode` — agent przyjmuje najrozsądniejsze założenie i pracuje dalej |
 
-### Stan i sesje
+### Stan (przedrostek `/tryb`) i sesje (przedrostek `/sesja-`)
 
 | Polecenie | Działanie |
 | --- | --- |
 | `/tryb` | tabela stanu trybu pracy i wszystkich blokad tej sesji, pokazana właścicielowi bez angażowania modelu |
-| `/dziennik` | ostatnie wpisy dziennika tej sesji: polecenia, odmowy hooka, zadziałania bezpiecznika |
-| `/wyczysc-tryby` | zdejmuje naraz tryb pracy ciągłej i wszystkie blokady tej sesji |
+| `/tryb-dziennik` | ostatnie wpisy dziennika tej sesji: polecenia, odmowy hooka, zadziałania bezpiecznika |
+| `/tryb-wyczysc` | zdejmuje naraz tryb pracy ciągłej i wszystkie blokady tej sesji |
 | `/sesja-id` | wypisuje identyfikator bieżącej sesji (do skopiowania) |
-| `/sesje` | lista ostatnich sesji obu kont właściciela (`danaco-przejmij-sesje --lista`) |
-| `/przejmij <id>` | przygotowuje przejęcie wskazanej sesji (`danaco-przejmij-sesje <id>`) i podaje gotowe polecenie `claude --resume` do wklejenia w terminalu |
+| `/sesja-lista` | lista ostatnich sesji obu kont właściciela (`danaco-przejmij-sesje --lista`) |
+| `/sesja-przejmij <id>` | przygotowuje przejęcie wskazanej sesji (`danaco-przejmij-sesje <id>`) i podaje gotowe polecenie `claude --resume` do wklejenia w terminalu |
 
 Każde polecenie działa też z prefiksem `/danaco-praca:` i liczy się wyłącznie na
 początku wiersza wiadomości; kilka poleceń można wydać naraz, każde w osobnym wierszu.
@@ -58,8 +60,8 @@ turę, żeby model złożył raport albo zaczął pracę.
 
 ## Przejmowanie sesji
 
-`/sesja-id` pokazuje identyfikator bieżącej sesji, a `/sesje` — spis sesji obu kont
-właściciela do przejęcia. `/przejmij <id>` jest cienką nakładką na systemowe
+`/sesja-id` pokazuje identyfikator bieżącej sesji, a `/sesja-lista` — spis sesji obu kont
+właściciela do przejęcia. `/sesja-przejmij <id>` jest cienką nakładką na systemowe
 `danaco-przejmij-sesje`: hook uruchamia przygotowanie przejęcia i pokazuje właścicielowi
 gotowe `cd <katalog> && claude --resume <id>`. Samego `claude --resume` hook nie odpala —
 nie ma dostępu do terminala — więc polecenie wkleja właściciel. Identyfikator jest
@@ -78,7 +80,7 @@ Wyłącznie właściciel, i to na trzech poziomach:
      także `$CLAUDE_PLUGIN_DATA` i maskę `plugins/data/danaco-p*`);
    - narzędzie `Skill`/`SlashCommand` z poleceniem wtyczki;
    - polecenie powłoki albo narzędzie wysyłające wiadomość, które zawiera polecenie
-     wtyczki (`/koniec-pracy`, `/bash-odblokuj`, `/przejmij` …) — droga podrzucenia promptu;
+     wtyczki (`/koniec-pracy`, `/odblokuj-bash`, `/sesja-przejmij` …) — droga podrzucenia promptu;
    - przy aktywnym trybie lub blokadzie: `claude --resume/--continue` z wnętrza sesji,
      zapis w plikach wtyczki i w `settings.json`, `disableAllHooks`,
      `claude plugin disable|uninstall`.
@@ -120,7 +122,7 @@ z 12 blokadami przeplatanymi pracą trwała dalej. Bezpiecznik wtyczki (3) dzia�
 
 Czekanie a praca w tle: w samym `/praca` polecenie uruchomione w tle (`run_in_background`
 albo `… &`) przechodzi zawsze — to proces albo monitoring, a agent pracuje dalej.
-Odrzucane jest czekanie na pierwszym planie. Ściślejsza blokada `/sleep-blokuj` odrzuca także
+Odrzucane jest czekanie na pierwszym planie. Ściślejsza blokada `/blokuj-sleep` odrzuca także
 `sleep`, `wait` i pętle odpytujące w tle oraz narzędzie `Monitor`; przechodzi wtedy tylko
 pętla monitoringu w tle, która dopisuje do dziennika (`>>`).
 
@@ -159,7 +161,7 @@ Rozbiór poleceń powłoki jest heurystyczny: rozpoznaje typowe postaci (także 
 uruchamianego pliku skryptu do 512 kB), nie każdą możliwą. Model z uprawnieniami roota
 może w zasadzie obejść każdy lokalny hook; wtyczka zamyka znane drogi i każdą próbę zapisuje
 w dzienniku. Budowa projektów (`make`, `npm run build`) nie jest analizowana pod kątem
-`/masowe-blokuj` i `/skrypty-blokuj`.
+`/blokuj-masowe` i `/blokuj-skrypty`.
 
 ## Struktura
 

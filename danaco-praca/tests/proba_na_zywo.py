@@ -90,7 +90,7 @@ PROBY = [
     },
     {
         "nazwa": "4-blokady-wlaczone",
-        "prompt": "/bash-blokuj\n/podagenci-blokuj",
+        "prompt": "/blokuj-bash\n/blokuj-podagenci",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "echo zakazane", "description": "x"}},
             {"narzedzie": "Agent", "wejscie": {"description": "x", "prompt": "zrób", "subagent_type": "general-purpose"}},
@@ -100,7 +100,7 @@ PROBY = [
     },
     {
         "nazwa": "4b-nowe-blokady",
-        "prompt": "/wyczysc-tryby\n/siec-blokuj\n/zapis-blokuj\n/pytania-blokuj\nzbadaj repo",
+        "prompt": "/tryb-wyczysc\n/blokuj-siec\n/blokuj-zapis\n/blokuj-pytania\nzbadaj repo",
         "scenariusz": [
             {"narzedzie": "WebFetch", "wejscie": {"url": "https://example.org", "prompt": "co tam jest"}},
             {"narzedzie": "Bash", "wejscie": {"command": "curl -s https://example.org", "description": "x"}},
@@ -122,7 +122,7 @@ PROBY = [
     },
     {
         "nazwa": "6-koniec-pracy-zwalnia",
-        "prompt": "/koniec-pracy\n/bash-odblokuj\n/podagenci-odblokuj",
+        "prompt": "/koniec-pracy\n/odblokuj-bash\n/odblokuj-podagenci",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "echo znowu-wolno", "description": "x"}},
             {"tekst": "Raport końcowy."},
@@ -130,7 +130,7 @@ PROBY = [
     },
     {
         "nazwa": "7-sleep-blokuj-poza-praca",
-        "prompt": "/wyczysc-tryby\n/sleep-blokuj\nzmierz czas",
+        "prompt": "/tryb-wyczysc\n/blokuj-sleep\nzmierz czas",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "sleep 2", "description": "x"}},
             {"tekst": "Koniec bez pracy ciągłej."},

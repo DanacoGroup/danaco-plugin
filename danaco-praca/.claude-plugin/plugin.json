@@ -1,7 +1,7 @@
 {
   "name": "danaco-praca",
-  "version": "5.1.0",
-  "description": "Polecenia właściciela sterujące trybem pracy agenta i sesją, egzekwowane hookami: praca ciągła (/praca, /koniec-pracy) z blokadą zakończenia tury i czekania; blokady w jednej konwencji /<temat>-blokuj ↔ /<temat>-odblokuj (bash, python, masowe, skrypty, sleep, podagenci, sudo, siec, zapis, pytania); komendy sesji /sesja-id, /sesje, /przejmij oraz podgląd /tryb, /dziennik i reset /wyczysc-tryby. Stan osobny na sesję, poza zasięgiem modelu, z dziennikiem. Do tego straż sekretów i straż dysku systemowego Danaco.",
+  "version": "5.2.0",
+  "description": "Polecenia właściciela sterujące trybem pracy agenta i sesją, egzekwowane hookami. Nazwy z czasownikiem na początku, żeby menu grupowało po przedrostku: praca ciągła (/praca, /koniec-pracy); blokady /blokuj-<temat> ↔ /odblokuj-<temat> (bash, python, masowe, skrypty, sleep, podagenci, sudo, siec, zapis, pytania); stan /tryb, /tryb-dziennik, /tryb-wyczysc; sesje /sesja-id, /sesja-lista, /sesja-przejmij. Stan osobny na sesję, poza zasięgiem modelu, z dziennikiem. Do tego straż sekretów i straż dysku systemowego Danaco.",
   "author": {
     "name": "Danaco Group"
   },

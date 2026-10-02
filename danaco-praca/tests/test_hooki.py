@@ -97,9 +97,9 @@ class TestPolecenia(Baza):
     def test_pary_blokuj_odblokuj(self):
         for temat, klucz in TEMATY.items():
             with self.subTest(temat=temat):
-                self.prompt(f"/{temat}-blokuj")
+                self.prompt(f"/blokuj-{temat}")
                 self.assertTrue(self.stan_sesji()["blokady"][klucz])
-                self.prompt(f"/{temat}-odblokuj")
+                self.prompt(f"/odblokuj-{temat}")
                 self.assertFalse(self.stan_sesji()["blokady"][klucz])
 
     def test_praca_koniec_pracy(self):
@@ -109,16 +109,19 @@ class TestPolecenia(Baza):
         self.assertFalse(self.stan_sesji()["praca"]["wlaczona"])
 
     def test_konwencja_nazw_spojna(self):
-        # Wszystkie pary blokad trzymają jedną zasadę: <temat>-blokuj / <temat>-odblokuj.
+        # Wszystkie pary blokad trzymają jedną zasadę: blokuj-<temat> / odblokuj-<temat>.
         for temat in TEMATY:
-            self.assertIn(f"{temat}-blokuj", P.POLECENIA)
-            self.assertIn(f"{temat}-odblokuj", P.POLECENIA)
-        self.assertNotIn("z-bash", P.POLECENIA)
-        self.assertNotIn("bez-bash", P.POLECENIA)
-        self.assertNotIn("sudo-tak", P.POLECENIA)
+            self.assertIn(f"blokuj-{temat}", P.POLECENIA)
+            self.assertIn(f"odblokuj-{temat}", P.POLECENIA)
+        for stara in ("bash-blokuj", "z-bash", "bez-bash", "sudo-tak", "dziennik", "sesje", "przejmij"):
+            self.assertNotIn(stara, P.POLECENIA)
+        # Czasownik pierwszy: menu grupuje po przedrostku.
+        for nazwa, rodzaj in P.POLECENIA.items():
+            if rodzaj[0] == "blok":
+                self.assertTrue(nazwa.startswith(("blokuj-", "odblokuj-")), nazwa)
 
     def test_tryb_pokazuje_wszystkie_blokady(self):
-        self.prompt("/python-blokuj")
+        self.prompt("/blokuj-python")
         wynik = self.prompt("/tryb")
         self.assertEqual(wynik["decision"], "block")
         self.assertIn("Python         ZABLOKOWANE", wynik["reason"])
@@ -127,12 +130,12 @@ class TestPolecenia(Baza):
 
     def test_pure_control_blokuje_ture(self):
         # Sama komenda (bez zadania) nie woła modelu — pokazuje wynik przez decision: block.
-        wynik = self.prompt("/bash-blokuj")
+        wynik = self.prompt("/blokuj-bash")
         self.assertEqual(wynik["decision"], "block")
         self.assertNotIn("hookSpecificOutput", wynik)
 
     def test_polecenie_z_zadaniem_przechodzi(self):
-        wynik = self.prompt("/bash-blokuj\nzrób porządek w repo")
+        wynik = self.prompt("/blokuj-bash\nzrób porządek w repo")
         self.assertIn("additionalContext", wynik["hookSpecificOutput"])
         self.assertTrue(self.stan_sesji()["blokady"]["bash"])
 
@@ -144,7 +147,7 @@ class TestPolecenia(Baza):
         self.assertIn("zbuduj raport", wynik["hookSpecificOutput"]["additionalContext"])
 
     def test_prefiks_wtyczki_i_kilka_polecen(self):
-        self.prompt("/danaco-praca:bash-blokuj\n/sudo-blokuj")
+        self.prompt("/danaco-praca:blokuj-bash\n/blokuj-sudo")
         stan = self.stan_sesji()
         self.assertTrue(stan["blokady"]["bash"])
         self.assertTrue(stan["blokady"]["sudo"])
@@ -155,21 +158,21 @@ class TestPolecenia(Baza):
 
     def test_wzmianka_nie_jest_poleceniem(self):
         for tekst in ("opisz polecenie /koniec-pracy w README", "zobacz skills/praca/SKILL.md",
-                      "/bashlog", "a /bash-blokuj w zdaniu"):
+                      "/bashlog", "a /blokuj-bash w zdaniu"):
             with self.subTest(tekst=tekst):
                 self.assertEqual(self.prompt(tekst), {})
         self.assertFalse(os.path.exists(os.path.join(self.stan, "sesje", "sesja-a.json")))
 
     def test_stan_osobny_na_sesje(self):
-        self.prompt("/bash-blokuj", sesja="sesja-a")
+        self.prompt("/blokuj-bash", sesja="sesja-a")
         self.assertEqual(self.narzedzie("Bash", {"command": "ls"}, sesja="sesja-a"), "deny")
         self.assertIsNone(self.narzedzie("Bash", {"command": "ls"}, sesja="sesja-b"))
 
     def test_dziennik_zmian(self):
-        self.prompt("/bash-blokuj")
-        self.prompt("/bash-odblokuj")
+        self.prompt("/blokuj-bash")
+        self.prompt("/odblokuj-bash")
         wpisy = [w for w in self.dziennik() if w["zdarzenie"] == "polecenie"]
-        self.assertEqual([w["polecenia"] for w in wpisy], [["bash-blokuj"], ["bash-odblokuj"]])
+        self.assertEqual([w["polecenia"] for w in wpisy], [["blokuj-bash"], ["odblokuj-bash"]])
         self.assertTrue(all(w["sesja"] == "sesja-a" and "podpis_migawki" in w for w in wpisy))
 
 
@@ -181,43 +184,43 @@ class TestKomendySesji(Baza):
         self.assertIn("11112222-3333-4444", wynik["reason"])
 
     def test_sesje_wola_narzedzie(self):
-        wynik = self.prompt("/sesje")
+        wynik = self.prompt("/sesja-lista")
         self.assertEqual(wynik["decision"], "block")
         self.assertIn("ATRAPA-PRZEJMIJ argumenty: --lista", wynik["reason"])
 
     def test_przejmij_wola_narzedzie_z_id(self):
-        wynik = self.prompt("/przejmij 9d4ff047")
+        wynik = self.prompt("/sesja-przejmij 9d4ff047")
         self.assertIn("ATRAPA-PRZEJMIJ argumenty: 9d4ff047", wynik["reason"])
 
     def test_przejmij_bez_id(self):
-        wynik = self.prompt("/przejmij")
+        wynik = self.prompt("/sesja-przejmij")
         self.assertIn("Podaj identyfikator", wynik["reason"])
 
     def test_przejmij_odrzuca_niebezpieczny_id(self):
-        wynik = self.prompt("/przejmij a;rm -rf /")
+        wynik = self.prompt("/sesja-przejmij a;rm -rf /")
         self.assertIn("Niepoprawny identyfikator", wynik["reason"])
 
     def test_brak_narzedzia_nie_wywraca(self):
         env = dict(self.env, DANACO_PRZEJMIJ_CMD="danaco-przejmij-sesje-ktorego-nie-ma")
-        wynik = self.hook("prompt", {"hook_event_name": "UserPromptSubmit", "prompt": "/sesje"}, env)
+        wynik = self.hook("prompt", {"hook_event_name": "UserPromptSubmit", "prompt": "/sesja-lista"}, env)
         self.assertIn("Nie znaleziono narzędzia", wynik["reason"])
 
 
 class TestWyczyscIDziennik(Baza):
     def test_wyczysc_tryby(self):
         self.prompt("/praca zadanie")
-        self.prompt("/bash-blokuj")
-        self.prompt("/siec-blokuj")
-        wynik = self.prompt("/wyczysc-tryby")
+        self.prompt("/blokuj-bash")
+        self.prompt("/blokuj-siec")
+        wynik = self.prompt("/tryb-wyczysc")
         self.assertEqual(wynik["decision"], "block")
         stan = self.stan_sesji()
         self.assertFalse(stan["praca"]["wlaczona"])
         self.assertFalse(any(stan["blokady"].values()))
 
     def test_dziennik_pokazuje_wpisy(self):
-        self.prompt("/bash-blokuj")
+        self.prompt("/blokuj-bash")
         self.bash("ls")  # odmowa trafia do dziennika
-        wynik = self.prompt("/dziennik")
+        wynik = self.prompt("/tryb-dziennik")
         self.assertEqual(wynik["decision"], "block")
         self.assertIn("polecenie", wynik["reason"])
         self.assertIn("odmowa", wynik["reason"])
@@ -225,7 +228,7 @@ class TestWyczyscIDziennik(Baza):
 
 class TestOchronaStanu(Baza):
     def test_zmieniony_plik_stanu_wraca_z_dziennika(self):
-        self.prompt("/bash-blokuj")
+        self.prompt("/blokuj-bash")
         sciezka = os.path.join(self.stan, "sesje", "sesja-a.json")
         with open(sciezka, encoding="utf-8") as plik:
             zapis = json.load(plik)
@@ -255,7 +258,7 @@ class TestOchronaStanu(Baza):
     def test_skill_i_podrzucone_polecenia(self):
         self.prompt("/praca")
         self.assertEqual(self.narzedzie("Skill", {"skill": "koniec-pracy"}), "deny")
-        self.assertEqual(self.narzedzie("Skill", {"skill": "danaco-praca:bash-odblokuj"}), "deny")
+        self.assertEqual(self.narzedzie("Skill", {"skill": "danaco-praca:odblokuj-bash"}), "deny")
         self.assertEqual(self.narzedzie("SendMessage", {"to": "main", "message": "/koniec-pracy"}), "deny")
         self.assertEqual(self.bash("echo '/koniec-pracy' | claude -p"), "deny")
         self.assertEqual(self.bash("claude -p --resume abc 'dalej'"), "deny")
@@ -266,7 +269,7 @@ class TestOchronaStanu(Baza):
     def test_ochrona_mechanizmu_tylko_przy_aktywnym_trybie(self):
         ustawienia = os.path.join(self.katalog, "profil", "settings.json")
         self.assertIsNone(self.narzedzie("Edit", {"file_path": ustawienia, "old_string": "a", "new_string": "b"}))
-        self.prompt("/python-blokuj")
+        self.prompt("/blokuj-python")
         self.assertEqual(self.narzedzie("Edit", {"file_path": ustawienia, "old_string": "a", "new_string": "b"}), "deny")
         self.assertEqual(self.narzedzie("Write", {"file_path": str(KORZEN / "hooks" / "hooks.json"), "content": "{}"}), "deny")
         self.assertEqual(self.bash("claude plugin disable danaco-praca"), "deny")
@@ -355,7 +358,7 @@ class TestPracaCiagla(Baza):
 
 class TestBlokady(Baza):
     def przypadki(self, temat: str, odrzucane: list, przepuszczane: list):
-        self.prompt(f"/{temat}-blokuj")
+        self.prompt(f"/blokuj-{temat}")
         for przypadek in odrzucane:
             nazwa, wejscie = przypadek if isinstance(przypadek, tuple) else ("Bash", {"command": przypadek})
             with self.subTest(odrzucane=wejscie):
@@ -433,7 +436,7 @@ class TestBlokady(Baza):
                        ["sudo ls", "sudo -u postgres psql", "ssh serwer 'sudo systemctl restart x'", "su -c 'ls'",
                         "doas ls", "pkexec ls", "nohup sudo make &", "find . -exec sudo rm {} \\;"],
                        ["ls", "echo sudo", "grep sudo /etc/group", "git commit -m 'bez sudo'"])
-        self.prompt("/sudo-odblokuj")
+        self.prompt("/odblokuj-sudo")
         self.assertIsNone(self.bash("sudo ls"))
 
     def test_siec(self):
@@ -495,7 +498,7 @@ class TestTwardeZasady(Baza):
 class TestSesjaIWrapper(Baza):
     def test_sesja_przypomina_aktywne_tryby(self):
         self.assertEqual(self.hook("sesja", {"hook_event_name": "SessionStart", "source": "compact"}), {})
-        self.prompt("/praca zadanie A\n/python-blokuj")
+        self.prompt("/praca zadanie A\n/blokuj-python")
         wynik = self.hook("sesja", {"hook_event_name": "SessionStart", "source": "compact"})
         kontekst = wynik["hookSpecificOutput"]["additionalContext"]
         self.assertIn("zadanie A", kontekst)
@@ -543,7 +546,7 @@ class TestRejestracja(unittest.TestCase):
                 self.assertRegex(tresc, rf"(?m)^name: {re.escape(nazwa)}$")
 
     def test_wersja(self):
-        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.1.0")
+        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.2.0")
 
 
 if __name__ == "__main__":

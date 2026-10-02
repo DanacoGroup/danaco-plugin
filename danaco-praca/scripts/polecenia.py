@@ -1,9 +1,11 @@
 """Polecenia właściciela: rozpoznanie w treści wiadomości i opis ich działania.
 
-Konwencja nazw (jedna zasada dla wszystkich par blokad): `/<temat>-blokuj` włącza blokadę,
-`/<temat>-odblokuj` ją zdejmuje. Tryb pracy ciągłej ma własną, naturalną nazwę
-(`/praca` ↔ `/koniec-pracy`), bo jest trybem, nie blokadą. Polecenia stanu i sesji
-(`/tryb`, `/dziennik`, `/wyczysc-tryby`, `/sesja-id`, `/sesje`, `/przejmij`) są pojedyncze.
+Konwencja nazw (czasownik pierwszy, żeby menu kontekstowe grupowało po przedrostku):
+blokady to `/blokuj-<temat>` ↔ `/odblokuj-<temat>` (wszystkie `/blokuj-*` i wszystkie
+`/odblokuj-*` stoją w menu razem). Stan ma przedrostek `/tryb` (`/tryb`, `/tryb-dziennik`,
+`/tryb-wyczysc`), sesje przedrostek `/sesja-` (`/sesja-id`, `/sesja-lista`,
+`/sesja-przejmij`). Tryb pracy ciągłej ma własną, naturalną nazwę (`/praca` ↔
+`/koniec-pracy`), bo jest trybem, nie blokadą.
 
 Polecenie liczy się wyłącznie na początku wiersza wiadomości (po odstępach), w postaci
 `/nazwa` albo `/danaco-praca:nazwa`. Wzmianka w środku zdania, w ścieżce
@@ -26,15 +28,15 @@ POLECENIA: dict[str, tuple] = {
     "praca": ("praca", True),
     "koniec-pracy": ("praca", False),
     "tryb": ("widok", "tryb"),
-    "dziennik": ("widok", "dziennik"),
+    "tryb-dziennik": ("widok", "dziennik"),
+    "tryb-wyczysc": ("akcja", "wyczysc"),
     "sesja-id": ("widok", "sesja-id"),
-    "sesje": ("widok", "sesje"),
-    "wyczysc-tryby": ("akcja", "wyczysc"),
-    "przejmij": ("akcja", "przejmij"),
+    "sesja-lista": ("widok", "sesje"),
+    "sesja-przejmij": ("akcja", "przejmij"),
 }
 for _temat, _klucz in TEMATY.items():
-    POLECENIA[f"{_temat}-blokuj"] = ("blok", _klucz, True)
-    POLECENIA[f"{_temat}-odblokuj"] = ("blok", _klucz, False)
+    POLECENIA[f"blokuj-{_temat}"] = ("blok", _klucz, True)
+    POLECENIA[f"odblokuj-{_temat}"] = ("blok", _klucz, False)
 
 _NAZWY = "|".join(sorted((re.escape(n) for n in POLECENIA), key=len, reverse=True))
 #: Polecenie na początku wiersza; po nazwie koniec wiersza albo odstęp i argument.
@@ -49,7 +51,7 @@ def rozpoznaj(tekst: str) -> tuple[list[tuple[str, str]], str]:
     """Lista (polecenie, argument) w kolejności oraz reszta wiadomości bez wierszy-poleceń.
 
     Argument to tekst w tym samym wierszu po nazwie polecenia (zlecenie dla `/praca`,
-    identyfikator dla `/przejmij`). Reszta to wiersze, które poleceniami nie są.
+    identyfikator dla `/sesja-przejmij`). Reszta to wiersze, które poleceniami nie są.
     """
     tekst = tekst or ""
     pary: list[tuple[str, str]] = []

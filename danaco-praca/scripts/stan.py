@@ -260,7 +260,7 @@ def opis_stanu(stan: dict) -> str:
     temat_klucza = {klucz: temat for temat, klucz in TEMATY.items()}
     for klucz, nazwa in BLOKADY.items():
         temat = temat_klucza[klucz]
-        wlacz, zwolnij = f"/{temat}-blokuj", f"/{temat}-odblokuj"
+        wlacz, zwolnij = f"/blokuj-{temat}", f"/odblokuj-{temat}"
         if stan["blokady"].get(klucz):
             wiersze.append(f"  {nazwa:<14} ZABLOKOWANE ({zwolnij} zwalnia)")
         elif klucz == "sudo":
@@ -273,7 +273,7 @@ def opis_stanu(stan: dict) -> str:
 
 
 def ogon_dziennika(magazyn, sesja: str, ile: int = 15) -> list[str]:
-    """Ostatnie wpisy dziennika tej sesji (dla polecenia /dziennik) jako wiersze tekstu."""
+    """Ostatnie wpisy dziennika tej sesji (dla polecenia /tryb-dziennik) jako wiersze tekstu."""
     wynik: list[str] = []
     for sciezka in (magazyn.dziennik + ".1", magazyn.dziennik):
         try:

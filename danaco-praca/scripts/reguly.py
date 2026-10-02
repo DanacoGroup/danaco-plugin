@@ -356,9 +356,9 @@ def blokada_sudo(tekst: str) -> str | None:
     for r, p, _ in polecenia(tekst):
         n = nazwa(r)
         if SUDO & set(p) or n in SUDO:
-            return "`sudo` (i doas, pkexec, run0) jest zablokowane poleceniem właściciela /sudo-blokuj. Wykonaj polecenie bez podnoszenia uprawnień albo pomiń ten krok"
+            return "`sudo` (i doas, pkexec, run0) jest zablokowane poleceniem właściciela /blokuj-sudo. Wykonaj polecenie bez podnoszenia uprawnień albo pomiń ten krok"
         if n == "su" and (any(a in ("-c", "--command", "-", "-l", "--login", "root") for a in r[1:]) or len(r) == 1):
-            return "`su` jest zablokowane poleceniem właściciela /sudo-blokuj"
+            return "`su` jest zablokowane poleceniem właściciela /blokuj-sudo"
     return None
 
 
@@ -367,7 +367,7 @@ UV_PYTHON = {"run", "pip", "tool", "sync", "add", "x", "venv", "python", "init"}
 
 
 def blokada_python(tekst: str, cwd: str) -> str | None:
-    powod = "Python jest zablokowany poleceniem właściciela /python-blokuj ({}). Wykonaj zadanie bez Pythona: innym narzędziem, poleceniem powłoki albo ręcznie"
+    powod = "Python jest zablokowany poleceniem właściciela /blokuj-python ({}). Wykonaj zadanie bez Pythona: innym narzędziem, poleceniem powłoki albo ręcznie"
     for r, _, slowa in polecenia(tekst):
         n = nazwa(r)
         if not r:
@@ -403,7 +403,7 @@ def blokada_python(tekst: str, cwd: str) -> str | None:
 
 def blokada_python_plik(narzedzie: str, wejscie: dict) -> str | None:
     """Tworzenie plików Pythona narzędziami plikowymi."""
-    powod = "Python jest zablokowany poleceniem właściciela /python-blokuj: nie twórz plików Pythona do uruchomienia ({})"
+    powod = "Python jest zablokowany poleceniem właściciela /blokuj-python: nie twórz plików Pythona do uruchomienia ({})"
     if narzedzie == "NotebookEdit":
         return powod.format("notatnik Jupyter")
     if narzedzie == "Write":
@@ -433,7 +433,7 @@ ODPYTANIE = re.compile(
 def blokada_czekania(tekst: str, wejscie: dict, scisle: bool = True) -> str | None:
     """sleep, wait, pętle oczekiwania i odpytywanie.
 
-    `scisle` (/sleep-blokuj): także w tle, poza monitoringiem z dziennikiem. Bez niego (sam tryb
+    `scisle` (/blokuj-sleep): także w tle, poza monitoringiem z dziennikiem. Bez niego (sam tryb
     /praca): tylko na pierwszym planie — polecenie w tle to proces albo monitoring, a agent
     pracuje dalej.
     """
@@ -484,7 +484,7 @@ ODBIOR_WYNIKU = {"TaskOutput", "BashOutput", "AgentOutputTool", "BashOutputTool"
 
 
 def blokada_czekania_narzedzie(narzedzie: str, wejscie: dict, scisle: bool = True) -> str | None:
-    """Narzędzia odkładające pracę. `Monitor` odrzuca tylko /sleep-blokuj; w /praca monitoring wolno stawiać."""
+    """Narzędzia odkładające pracę. `Monitor` odrzuca tylko /blokuj-sleep; w /praca monitoring wolno stawiać."""
     powod = "Czekanie jest zablokowane ({}): pracuj dalej zamiast czekać na wybudzenie albo wynik"
     if narzedzie == "Monitor" and not scisle:
         return None
@@ -498,7 +498,7 @@ def blokada_czekania_narzedzie(narzedzie: str, wejscie: dict, scisle: bool = Tru
 
 
 def blokada_masowa(tekst: str, cwd: str, limit: int, glebokosc: int = 0) -> str | None:
-    powod = ("Praca masowa jest zablokowana poleceniem właściciela /masowe-blokuj ({}). Edytuj pliki "
+    powod = ("Praca masowa jest zablokowana poleceniem właściciela /blokuj-masowe ({}). Edytuj pliki "
              "pojedynczo narzędziami Edit/Write, plik po pliku, sprawdzając każdą zmianę")
     for r, _, _ in polecenia(tekst):
         n = nazwa(r)
@@ -566,7 +566,7 @@ def dozwolony_cel_reczny(cel: str) -> bool:
 
 
 def blokada_reczna(tekst: str, cwd: str, glebokosc: int = 0) -> str | None:
-    powod = ("Pisanie ręczne: właściciel poleceniem /skrypty-blokuj dopuścił zmiany plików wyłącznie "
+    powod = ("Pisanie ręczne: właściciel poleceniem /blokuj-skrypty dopuścił zmiany plików wyłącznie "
              "narzędziami Edit i Write ({}). Wpisz treść sam tymi narzędziami, bez generowania jej skryptem")
     for r, _, slowa in polecenia(tekst):
         n = nazwa(r)
@@ -605,7 +605,7 @@ CLAUDE = {"claude", "claude-uslugi", "claude-code"}
 
 def blokada_podagentow_narzedzie(narzedzie: str) -> str | None:
     if narzedzie in NARZEDZIA_PODAGENTOW:
-        return (f"Podagenci są zablokowani poleceniem właściciela /podagenci-blokuj (narzędzie {narzedzie}). "
+        return (f"Podagenci są zablokowani poleceniem właściciela /blokuj-podagenci (narzędzie {narzedzie}). "
                 "Wykonaj tę pracę sam, krok po kroku")
     return None
 
@@ -614,9 +614,9 @@ def blokada_podagentow_powloka(tekst: str) -> str | None:
     for r, _, _ in polecenia(tekst):
         n = nazwa(r)
         if n in CLAUDE and any(a in ("-p", "--print", "--agent", "--agents") or a.startswith("--print") for a in r[1:]):
-            return "Podagenci są zablokowani poleceniem właściciela /podagenci-blokuj (`claude -p` w powłoce). Wykonaj tę pracę sam"
+            return "Podagenci są zablokowani poleceniem właściciela /blokuj-podagenci (`claude -p` w powłoce). Wykonaj tę pracę sam"
         if n == "codex" and "exec" in r[1:]:
-            return "Podagenci są zablokowani poleceniem właściciela /podagenci-blokuj (`codex exec`). Wykonaj tę pracę sam"
+            return "Podagenci są zablokowani poleceniem właściciela /blokuj-podagenci (`codex exec`). Wykonaj tę pracę sam"
     return None
 
 
@@ -632,7 +632,7 @@ def wznowienie_sesji(tekst: str) -> str | None:
     return None
 
 
-# --- blokada sieci (/siec-blokuj) -----------------------------------------------------------------
+# --- blokada sieci (/blokuj-siec) -----------------------------------------------------------------
 
 #: Klienty, których jedyną funkcją jest połączenie sieciowe.
 SIEC_KLIENCI = {"curl", "wget", "nc", "ncat", "netcat", "telnet", "ssh", "sftp", "ftp", "lftp",
@@ -657,8 +657,8 @@ ZDALNY_CEL = re.compile(r"[\w.-]+@[\w.-]+:|^[\w.-]+:")
 
 
 def blokada_sieci(tekst: str) -> str | None:
-    powod = ("Sieć jest zablokowana poleceniem właściciela /siec-blokuj ({}). Pracuj na danych "
-             "lokalnych; pobieranie i połączenia zdalne wykonasz po /siec-odblokuj")
+    powod = ("Sieć jest zablokowana poleceniem właściciela /blokuj-siec ({}). Pracuj na danych "
+             "lokalnych; pobieranie i połączenia zdalne wykonasz po /odblokuj-siec")
     for r, _, _ in polecenia(tekst):
         n = nazwa(r)
         if not r:
@@ -678,7 +678,7 @@ def blokada_sieci(tekst: str) -> str | None:
     return None
 
 
-# --- blokada zapisu / tryb tylko-odczyt (/zapis-blokuj) -------------------------------------------
+# --- blokada zapisu / tryb tylko-odczyt (/blokuj-zapis) -------------------------------------------
 
 #: Polecenia tworzące albo niszczące pliki (poza przenoszeniem treści, które liczy WYMIANA).
 ZAPIS_TWORZ = {"mkdir", "mkfifo", "mknod", "touch", "ln", "install"}
@@ -688,8 +688,8 @@ GIT_ZMIANA = {"commit", "add", "rm", "mv", "reset", "restore", "checkout", "merg
 
 
 def blokada_zapisu(tekst: str) -> str | None:
-    powod = ("Tryb tylko-odczyt jest włączony poleceniem właściciela /zapis-blokuj ({}). Oglądaj "
-             "i analizuj; pliki zmienisz po /zapis-odblokuj narzędziami Edit i Write")
+    powod = ("Tryb tylko-odczyt jest włączony poleceniem właściciela /blokuj-zapis ({}). Oglądaj "
+             "i analizuj; pliki zmienisz po /odblokuj-zapis narzędziami Edit i Write")
     for r, _, slowa in polecenia(tekst):
         n = nazwa(r)
         if not r:
