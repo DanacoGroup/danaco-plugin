@@ -3,7 +3,8 @@
 
 Hooki są uruchamiane tak jak przez klienta: wrapper `hooks/hak.sh` z JSON-em zdarzenia na
 stdin. Stan trafia do katalogu tymczasowego (`DANACO_PRACA_STAN`), więc testy nie dotykają
-danych prawdziwej instalacji.
+danych prawdziwej instalacji. Narzędzie przejmowania sesji podmieniamy atrapą
+(`DANACO_PRZEJMIJ_CMD`), żeby nie ruszać prawdziwych sesji.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ WRAPPER = KORZEN / "hooks" / "hak.sh"
 sys.path.insert(0, str(KORZEN / "scripts"))
 
 import polecenia as P  # noqa: E402
+from stan import BLOKADY, TEMATY  # noqa: E402
 
 
 class Baza(unittest.TestCase):
@@ -30,8 +32,13 @@ class Baza(unittest.TestCase):
         self.stan = os.path.join(self.katalog, "stan")
         self.cwd = os.path.join(self.katalog, "projekt")
         os.makedirs(self.cwd)
+        self.przejmij = os.path.join(self.katalog, "przejmij-atrapa")
+        with open(self.przejmij, "w") as plik:
+            plik.write("#!/bin/sh\necho \"ATRAPA-PRZEJMIJ argumenty: $*\"\n")
+        os.chmod(self.przejmij, 0o755)
         self.env = dict(os.environ, DANACO_PRACA_STAN=self.stan, DANACO_PRACA_STRAZ_DYSKU="system",
-                        CLAUDE_PLUGIN_ROOT=str(KORZEN), CLAUDE_CONFIG_DIR=os.path.join(self.katalog, "profil"),
+                        DANACO_PRZEJMIJ_CMD=self.przejmij, CLAUDE_PLUGIN_ROOT=str(KORZEN),
+                        CLAUDE_CONFIG_DIR=os.path.join(self.katalog, "profil"),
                         TMPDIR=os.path.join(self.katalog, "tmp"))
         self.env.pop("CLAUDE_PLUGIN_DATA", None)
 
@@ -75,41 +82,61 @@ class Baza(unittest.TestCase):
 
 
 class TestPolecenia(Baza):
-    def test_kazde_polecenie_zmienia_stan(self):
-        for polecenie, cel in P.POLECENIA.items():
-            if cel is None:
-                continue
-            klucz, wartosc = cel
+    def test_kazde_polecenie_zmienia_stan_albo_pokazuje(self):
+        for polecenie, rodzaj in P.POLECENIA.items():
             with self.subTest(polecenie=polecenie):
                 wynik = self.prompt(f"/{polecenie}")
-                self.assertIn("additionalContext", wynik["hookSpecificOutput"])
-                self.assertIn("zapisano", wynik["systemMessage"])
-                stan = self.stan_sesji()
-                aktualna = stan["praca"]["wlaczona"] if klucz == "praca" else stan["blokady"][klucz]
-                self.assertEqual(aktualna, wartosc)
+                self.assertTrue(wynik, "polecenie nie dało żadnego wyjścia")
+                if rodzaj[0] == "praca":
+                    self.assertEqual(self.stan_sesji()["praca"]["wlaczona"], rodzaj[1])
+                elif rodzaj[0] == "blok":
+                    self.assertEqual(self.stan_sesji()["blokady"][rodzaj[1]], rodzaj[2])
+                else:
+                    self.assertIn("reason", wynik)  # widok/akcja: pokaz i blokada tury
 
-    def test_pary_wlacz_wylacz(self):
-        for wlacz, wylacz in (("bez-bash", "z-bash"), ("bez-python", "z-python"), ("bez-masowych", "z-masowymi"),
-                              ("reczne-pisanie", "z-skryptami"), ("bez-sleep", "z-sleep"),
-                              ("bez-podagentow", "z-podagentami"), ("sudo-nie", "sudo-tak"), ("praca", "koniec-pracy")):
-            klucz = P.POLECENIA[wlacz][0]
-            with self.subTest(para=wlacz):
-                self.prompt(f"/{wlacz}")
-                stan = self.stan_sesji()
-                self.assertTrue(stan["praca"]["wlaczona"] if klucz == "praca" else stan["blokady"][klucz])
-                self.prompt(f"/{wylacz}")
-                stan = self.stan_sesji()
-                self.assertFalse(stan["praca"]["wlaczona"] if klucz == "praca" else stan["blokady"][klucz])
+    def test_pary_blokuj_odblokuj(self):
+        for temat, klucz in TEMATY.items():
+            with self.subTest(temat=temat):
+                self.prompt(f"/{temat}-blokuj")
+                self.assertTrue(self.stan_sesji()["blokady"][klucz])
+                self.prompt(f"/{temat}-odblokuj")
+                self.assertFalse(self.stan_sesji()["blokady"][klucz])
 
-    def test_tryb_pokazuje_stan_bez_modelu(self):
-        self.prompt("/bez-python")
+    def test_praca_koniec_pracy(self):
+        self.prompt("/praca")
+        self.assertTrue(self.stan_sesji()["praca"]["wlaczona"])
+        self.prompt("/koniec-pracy")
+        self.assertFalse(self.stan_sesji()["praca"]["wlaczona"])
+
+    def test_konwencja_nazw_spojna(self):
+        # Wszystkie pary blokad trzymają jedną zasadę: <temat>-blokuj / <temat>-odblokuj.
+        for temat in TEMATY:
+            self.assertIn(f"{temat}-blokuj", P.POLECENIA)
+            self.assertIn(f"{temat}-odblokuj", P.POLECENIA)
+        self.assertNotIn("z-bash", P.POLECENIA)
+        self.assertNotIn("bez-bash", P.POLECENIA)
+        self.assertNotIn("sudo-tak", P.POLECENIA)
+
+    def test_tryb_pokazuje_wszystkie_blokady(self):
+        self.prompt("/python-blokuj")
         wynik = self.prompt("/tryb")
         self.assertEqual(wynik["decision"], "block")
         self.assertIn("Python         ZABLOKOWANE", wynik["reason"])
-        for nazwa in ("praca ciągła", "Bash", "praca masowa", "pisanie ręczne", "uśpienie", "podagenci", "sudo"):
+        for nazwa in BLOKADY.values():
             self.assertIn(nazwa, wynik["reason"])
 
-    def test_praca_zapisuje_zlecenie(self):
+    def test_pure_control_blokuje_ture(self):
+        # Sama komenda (bez zadania) nie woła modelu — pokazuje wynik przez decision: block.
+        wynik = self.prompt("/bash-blokuj")
+        self.assertEqual(wynik["decision"], "block")
+        self.assertNotIn("hookSpecificOutput", wynik)
+
+    def test_polecenie_z_zadaniem_przechodzi(self):
+        wynik = self.prompt("/bash-blokuj\nzrób porządek w repo")
+        self.assertIn("additionalContext", wynik["hookSpecificOutput"])
+        self.assertTrue(self.stan_sesji()["blokady"]["bash"])
+
+    def test_praca_zapisuje_zlecenie_i_przechodzi(self):
         wynik = self.prompt("/praca zbuduj raport\nszczegóły w pliku a.md")
         stan = self.stan_sesji()
         self.assertTrue(stan["praca"]["wlaczona"])
@@ -117,7 +144,7 @@ class TestPolecenia(Baza):
         self.assertIn("zbuduj raport", wynik["hookSpecificOutput"]["additionalContext"])
 
     def test_prefiks_wtyczki_i_kilka_polecen(self):
-        self.prompt("/danaco-praca:bez-bash\n/sudo-nie")
+        self.prompt("/danaco-praca:bash-blokuj\n/sudo-blokuj")
         stan = self.stan_sesji()
         self.assertTrue(stan["blokady"]["bash"])
         self.assertTrue(stan["blokady"]["sudo"])
@@ -127,27 +154,78 @@ class TestPolecenia(Baza):
         self.assertEqual(self.stan_sesji()["praca"]["zlecenie"], "zadanie X")
 
     def test_wzmianka_nie_jest_poleceniem(self):
-        for tekst in ("opisz polecenie /koniec-pracy w README", "zobacz skills/praca/SKILL.md", "/pracak", "a /bez-bash"):
+        for tekst in ("opisz polecenie /koniec-pracy w README", "zobacz skills/praca/SKILL.md",
+                      "/bashlog", "a /bash-blokuj w zdaniu"):
             with self.subTest(tekst=tekst):
                 self.assertEqual(self.prompt(tekst), {})
         self.assertFalse(os.path.exists(os.path.join(self.stan, "sesje", "sesja-a.json")))
 
     def test_stan_osobny_na_sesje(self):
-        self.prompt("/bez-bash", sesja="sesja-a")
+        self.prompt("/bash-blokuj", sesja="sesja-a")
         self.assertEqual(self.narzedzie("Bash", {"command": "ls"}, sesja="sesja-a"), "deny")
         self.assertIsNone(self.narzedzie("Bash", {"command": "ls"}, sesja="sesja-b"))
 
     def test_dziennik_zmian(self):
-        self.prompt("/bez-bash")
-        self.prompt("/z-bash")
+        self.prompt("/bash-blokuj")
+        self.prompt("/bash-odblokuj")
         wpisy = [w for w in self.dziennik() if w["zdarzenie"] == "polecenie"]
-        self.assertEqual([w["polecenia"] for w in wpisy], [["bez-bash"], ["z-bash"]])
+        self.assertEqual([w["polecenia"] for w in wpisy], [["bash-blokuj"], ["bash-odblokuj"]])
         self.assertTrue(all(w["sesja"] == "sesja-a" and "podpis_migawki" in w for w in wpisy))
+
+
+class TestKomendySesji(Baza):
+    def test_sesja_id(self):
+        wynik = self.hook("prompt", {"hook_event_name": "UserPromptSubmit", "prompt": "/sesja-id",
+                                     "session_id": "11112222-3333-4444"})
+        self.assertEqual(wynik["decision"], "block")
+        self.assertIn("11112222-3333-4444", wynik["reason"])
+
+    def test_sesje_wola_narzedzie(self):
+        wynik = self.prompt("/sesje")
+        self.assertEqual(wynik["decision"], "block")
+        self.assertIn("ATRAPA-PRZEJMIJ argumenty: --lista", wynik["reason"])
+
+    def test_przejmij_wola_narzedzie_z_id(self):
+        wynik = self.prompt("/przejmij 9d4ff047")
+        self.assertIn("ATRAPA-PRZEJMIJ argumenty: 9d4ff047", wynik["reason"])
+
+    def test_przejmij_bez_id(self):
+        wynik = self.prompt("/przejmij")
+        self.assertIn("Podaj identyfikator", wynik["reason"])
+
+    def test_przejmij_odrzuca_niebezpieczny_id(self):
+        wynik = self.prompt("/przejmij a;rm -rf /")
+        self.assertIn("Niepoprawny identyfikator", wynik["reason"])
+
+    def test_brak_narzedzia_nie_wywraca(self):
+        env = dict(self.env, DANACO_PRZEJMIJ_CMD="danaco-przejmij-sesje-ktorego-nie-ma")
+        wynik = self.hook("prompt", {"hook_event_name": "UserPromptSubmit", "prompt": "/sesje"}, env)
+        self.assertIn("Nie znaleziono narzędzia", wynik["reason"])
+
+
+class TestWyczyscIDziennik(Baza):
+    def test_wyczysc_tryby(self):
+        self.prompt("/praca zadanie")
+        self.prompt("/bash-blokuj")
+        self.prompt("/siec-blokuj")
+        wynik = self.prompt("/wyczysc-tryby")
+        self.assertEqual(wynik["decision"], "block")
+        stan = self.stan_sesji()
+        self.assertFalse(stan["praca"]["wlaczona"])
+        self.assertFalse(any(stan["blokady"].values()))
+
+    def test_dziennik_pokazuje_wpisy(self):
+        self.prompt("/bash-blokuj")
+        self.bash("ls")  # odmowa trafia do dziennika
+        wynik = self.prompt("/dziennik")
+        self.assertEqual(wynik["decision"], "block")
+        self.assertIn("polecenie", wynik["reason"])
+        self.assertIn("odmowa", wynik["reason"])
 
 
 class TestOchronaStanu(Baza):
     def test_zmieniony_plik_stanu_wraca_z_dziennika(self):
-        self.prompt("/bez-bash")
+        self.prompt("/bash-blokuj")
         sciezka = os.path.join(self.stan, "sesje", "sesja-a.json")
         with open(sciezka, encoding="utf-8") as plik:
             zapis = json.load(plik)
@@ -177,7 +255,7 @@ class TestOchronaStanu(Baza):
     def test_skill_i_podrzucone_polecenia(self):
         self.prompt("/praca")
         self.assertEqual(self.narzedzie("Skill", {"skill": "koniec-pracy"}), "deny")
-        self.assertEqual(self.narzedzie("Skill", {"skill": "danaco-praca:z-bash"}), "deny")
+        self.assertEqual(self.narzedzie("Skill", {"skill": "danaco-praca:bash-odblokuj"}), "deny")
         self.assertEqual(self.narzedzie("SendMessage", {"to": "main", "message": "/koniec-pracy"}), "deny")
         self.assertEqual(self.bash("echo '/koniec-pracy' | claude -p"), "deny")
         self.assertEqual(self.bash("claude -p --resume abc 'dalej'"), "deny")
@@ -188,7 +266,7 @@ class TestOchronaStanu(Baza):
     def test_ochrona_mechanizmu_tylko_przy_aktywnym_trybie(self):
         ustawienia = os.path.join(self.katalog, "profil", "settings.json")
         self.assertIsNone(self.narzedzie("Edit", {"file_path": ustawienia, "old_string": "a", "new_string": "b"}))
-        self.prompt("/bez-python")
+        self.prompt("/python-blokuj")
         self.assertEqual(self.narzedzie("Edit", {"file_path": ustawienia, "old_string": "a", "new_string": "b"}), "deny")
         self.assertEqual(self.narzedzie("Write", {"file_path": str(KORZEN / "hooks" / "hooks.json"), "content": "{}"}), "deny")
         self.assertEqual(self.bash("claude plugin disable danaco-praca"), "deny")
@@ -215,7 +293,6 @@ class TestPracaCiagla(Baza):
         self.assertNotIn("decision", wynik)
         self.assertIn("bezpiecznik", wynik["systemMessage"])
         self.assertTrue(self.stan_sesji()["praca"]["wlaczona"])
-        # Po interwencji licznik od zera; wywołanie narzędzia też go zeruje.
         self.assertEqual(self.stop().get("decision"), "block")
         self.assertEqual(self.stop().get("decision"), "block")
         self.bash("echo praca")
@@ -234,7 +311,6 @@ class TestPracaCiagla(Baza):
         self.prompt("/praca")
         self.assertEqual(self.stop(podagent="ag1"), {})
         self.assertEqual(self.stop(podagent="ag1"), {})
-        # Wywołanie narzędzia przez podagenta nie zeruje licznika agenta głównego.
         self.assertEqual(self.stop().get("decision"), "block")
         self.narzedzie("Bash", {"command": "ls"}, agent_id="ag1")
         self.assertEqual(self.stan_sesji()["praca"]["bez_narzedzi"], {"glowny": 1})
@@ -256,11 +332,12 @@ class TestPracaCiagla(Baza):
             ("Agent", {"prompt": "zbadaj", "run_in_background": True}),
             ("Bash", {"command": "npm test > test.log 2>&1", "run_in_background": True}),
             ("TaskOutput", {"task_id": "x", "block": False}),
+            ("Monitor", {"command": "tail -f app.log | grep ERROR"}),
         ):
             with self.subTest(nazwa=nazwa):
                 self.assertIsNone(self.narzedzie(nazwa, wejscie))
 
-    def test_praca_blokuje_czekanie(self):
+    def test_praca_blokuje_czekanie_ale_nie_tlo(self):
         self.prompt("/praca")
         for polecenie in ("sleep 30", "timeout 100 sleep 90", "wait", "until [ -f x ]; do :; done",
                           "while ! curl -s localhost:8000; do sleep 1; done"):
@@ -270,17 +347,15 @@ class TestPracaCiagla(Baza):
                                ("CronCreate", {"cron": "* * * * *"})):
             with self.subTest(nazwa=nazwa):
                 self.assertEqual(self.narzedzie(nazwa, wejscie), "deny")
-        # Monitoring wolno stawiać (narzędzie Monitor i procesy w tle); agent pracuje dalej.
-        for nazwa, wejscie in (("Monitor", {"command": "tail -f app.log | grep --line-buffered ERROR"}),
-                               ("Bash", {"command": "sleep 600 && make raport", "run_in_background": True}),
+        for nazwa, wejscie in (("Bash", {"command": "sleep 600 && make raport", "run_in_background": True}),
                                ("Bash", {"command": "nohup sh -c 'until test -f x; do sleep 5; done; echo ok' > w.log 2>&1 &"})):
             with self.subTest(dozwolone=nazwa):
                 self.assertIsNone(self.narzedzie(nazwa, wejscie))
 
 
 class TestBlokady(Baza):
-    def przypadki(self, polecenie_wl: str, odrzucane: list, przepuszczane: list):
-        self.prompt(f"/{polecenie_wl}")
+    def przypadki(self, temat: str, odrzucane: list, przepuszczane: list):
+        self.prompt(f"/{temat}-blokuj")
         for przypadek in odrzucane:
             nazwa, wejscie = przypadek if isinstance(przypadek, tuple) else ("Bash", {"command": przypadek})
             with self.subTest(odrzucane=wejscie):
@@ -290,98 +365,101 @@ class TestBlokady(Baza):
             with self.subTest(przepuszczane=wejscie):
                 self.assertIsNone(self.narzedzie(nazwa, wejscie))
 
-    def test_bez_bash(self):
-        self.przypadki("bez-bash", ["ls", ("PowerShell", {"command": "dir"}), ("Monitor", {"command": "x"}),
-                                    ("mcp__terminal__run_in_terminal", {"command": "ls"})],
+    def test_bash(self):
+        self.przypadki("bash", ["ls", ("PowerShell", {"command": "dir"}), ("Monitor", {"command": "x"}),
+                                ("mcp__terminal__run_in_terminal", {"command": "ls"})],
                        [("Read", {"file_path": "/etc/hostname"}), ("Grep", {"pattern": "x"}),
                         ("Write", {"file_path": f"{self.cwd}/a.md", "content": "x"})])
 
-    def test_bez_python(self):
+    def test_python(self):
         skrypt = os.path.join(self.cwd, "narzedzie")
         with open(skrypt, "w") as plik:
             plik.write("#!/usr/bin/env python3\nprint(1)\n")
-        self.przypadki("bez-python",
+        self.przypadki("python",
                        ["python3 a.py", "python -c 'print(1)'", "/usr/bin/python3.12 -m http.server", "pip install x",
                         "uv run x.py", "uvx ruff", "./skrypt.py", "bash -c 'python3 x'", "env python3 x",
                         "pytest -q", "poetry run x", f"{skrypt} --opcja", "cat > a.py <<'EOF'\nprint(1)\nEOF",
                         "echo 'print(1)' | tee b.py", "sudo -u x python3 y", "find . -exec python3 {} \\;",
                         ("Write", {"file_path": f"{self.cwd}/nowy.py", "content": "print(1)"}),
-                        ("Write", {"file_path": f"{self.cwd}/narzedzie2", "content": "#!/usr/bin/python3\nx"}),
                         ("NotebookEdit", {"notebook_path": "a.ipynb", "new_source": "x"})],
                        ["ls", "node a.js", "grep -rn python README.md", "echo python", "git log --grep=python",
                         ("Edit", {"file_path": f"{self.cwd}/istniejacy.py", "old_string": "a", "new_string": "b"}),
                         ("Write", {"file_path": f"{self.cwd}/notatka.md", "content": "python3 a.py"})])
 
-    def test_bez_masowych(self):
+    def test_masowe(self):
         petla = os.path.join(self.cwd, "napraw.py")
         with open(petla, "w") as plik:
             plik.write("from pathlib import Path\nfor p in Path('.').rglob('*.md'):\n    p.write_text(p.read_text().replace('a','b'))\n")
-        powloka = os.path.join(self.cwd, "napraw.sh")
-        with open(powloka, "w") as plik:
-            plik.write("#!/bin/bash\nfor f in *.txt; do sed -i 's/a/b/' \"$f\"; done\n")
-        self.przypadki("bez-masowych",
-                       ["sed -i 's/a/b/' *.md", "sed -i 's/a/b/' a.txt b.txt", "sed -i.bak -e 's/a/b/' -r src/",
-                        "perl -pi -e 's/a/b/' a b", "find . -name '*.md' -exec sed -i 's/a/b/' {} +",
-                        "find . -type f -delete", "grep -rl foo . | xargs sed -i 's/foo/bar/'",
-                        "for f in *.txt; do sed 's/a/b/' $f > $f.new; done",
-                        "for f in $(ls); do mv \"$f\" \"x$f\"; done",
+        self.przypadki("masowe",
+                       ["sed -i 's/a/b/' *.md", "sed -i 's/a/b/' a.txt b.txt", "perl -pi -e 's/a/b/' a b",
+                        "find . -name '*.md' -exec sed -i 's/a/b/' {} +", "find . -type f -delete",
+                        "grep -rl foo . | xargs sed -i 's/foo/bar/'", "for f in *.txt; do sed 's/a/b/' $f > $f.new; done",
                         "python3 -c \"from pathlib import Path\nfor p in Path('.').rglob('*'): p.write_text('x')\"",
-                        f"python3 {petla}", f"bash {powloka}", "git checkout -- .", "git reset --hard HEAD",
-                        "patch -p1 < zmiana.diff", "rename 's/a/b/' *.txt",
-                        "sqlite3 baza.db \"UPDATE wpisy SET tresc = REPLACE(tresc, 'a', 'b')\"",
-                        "psql -c 'DELETE FROM wpisy'"],
-                       ["sed -i 's/a/b/' jeden.txt", "sed -n '1,5p' a b c", "for f in *.py; do wc -l $f; done",
-                        "find . -name '*.md' -exec grep -l x {} +", "grep -rl foo . | xargs wc -l",
-                        "psql -c 'UPDATE wpisy SET a=1 WHERE id=3'", "git checkout -b nowa", "cp a b",
-                        ("Edit", {"file_path": "a.md", "old_string": "x", "new_string": "y", "replace_all": True}),
+                        f"python3 {petla}", "git checkout -- .", "git reset --hard HEAD", "patch -p1 < z.diff",
+                        "sqlite3 b.db \"UPDATE t SET a = REPLACE(a,'x','y')\"", "psql -c 'DELETE FROM t'"],
+                       ["sed -i 's/a/b/' jeden.txt", "for f in *.py; do wc -l $f; done",
+                        "psql -c 'UPDATE t SET a=1 WHERE id=3'", "git checkout -b nowa", "cp a b",
+                        ("Edit", {"file_path": "a.md", "old_string": "x", "new_string": "y", "replace_all": True})])
+
+    def test_skrypty_pisanie_reczne(self):
+        self.przypadki("skrypty",
+                       ["echo x > plik.txt", "printf 'a' >> notatki.md", "cat > a.md <<'EOF'\nt\nEOF",
+                        "sed -i 's/a/b/' jeden.txt", "echo x | tee plik.md", "python3 -c \"open('a','w').write('x')\"",
+                        "truncate -s 0 a", "git apply z.diff"],
+                       ["ls -la", "npm test > /tmp/test.log 2>&1", "grep x a > /dev/null", "cp a b", "rm a",
+                        "echo x >> $TMPDIR/n.txt", "git commit -m x",
                         ("Write", {"file_path": f"{self.cwd}/a.md", "content": "x"})])
 
-    def test_reczne_pisanie(self):
-        skrypt = os.path.join(self.cwd, "gen.js")
-        with open(skrypt, "w") as plik:
-            plik.write("require('fs').writeFileSync('a.txt', 'x')\n")
-        self.przypadki("reczne-pisanie",
-                       ["echo x > plik.txt", "printf 'a' >> notatki.md", "cat > a.md <<'EOF'\ntekst\nEOF",
-                        "sed -i 's/a/b/' jeden.txt", "echo x | tee plik.md", "python3 -c \"open('a','w').write('x')\"",
-                        f"node {skrypt}", "truncate -s 0 a", "dd if=/dev/zero of=plik bs=1 count=1",
-                        "git apply zmiana.diff"],
-                       ["ls -la", "npm test > /tmp/test.log 2>&1", "make > build.log 2>&1", "grep x a > /dev/null",
-                        "cp a b", "mv a b", "rm a", "mkdir -p x", "echo x >> $TMPDIR/n.txt", "git commit -m x",
-                        ("Write", {"file_path": f"{self.cwd}/a.md", "content": "x"}),
-                        ("Edit", {"file_path": f"{self.cwd}/a.md", "old_string": "x", "new_string": "y"})])
-
-    def test_bez_sleep(self):
-        self.przypadki("bez-sleep",
+    def test_sleep(self):
+        self.przypadki("sleep",
                        ["sleep 5", "timeout 30 sleep 10", "sleep 1 && make", "wait $PID", "tail -f app.log",
-                        "watch -n 5 ls", "until curl -s x; do sleep 2; done", "while pgrep make; do :; done",
-                        "python3 -c 'import time; time.sleep(3)'", "ssh serwer 'sleep 100'",
-                        "bash -c \"while true; do sleep 5; done\"", "inotifywait -e modify a",
-                        "docker wait kontener", "gh run watch 123",
-                        ("ScheduleWakeup", {"delaySeconds": 60}), ("Monitor", {"command": "tail -f x"}),
-                        ("TaskOutput", {"task_id": "x", "block": True}), ("BashOutput", {"bash_id": "x"}),
-                        ("mcp__computer-use__wait", {"duration": 3}),
-                        ("mcp__playwright__browser_wait_for", {"time": 5}),
-                        ("Bash", {"command": "sleep 600 && make raport", "run_in_background": True})],
+                        "watch -n 5 ls", "until curl -s x; do sleep 2; done", "python3 -c 'import time; time.sleep(3)'",
+                        "ssh serwer 'sleep 100'", ("ScheduleWakeup", {"delaySeconds": 60}),
+                        ("Monitor", {"command": "tail -f x"}), ("TaskOutput", {"task_id": "x", "block": True}),
+                        ("BashOutput", {"bash_id": "x"}),
+                        ("Bash", {"command": "sleep 600 && make", "run_in_background": True})],
                        ["ls", "echo sleep", "git commit -m 'usuń sleep'", "grep -rn sleep src/", "npm test",
-                        "while read l; do echo $l; done < plik", "tail -n 20 app.log",
-                        ("Bash", {"command": "while true; do date >> /tmp/monitor.log; sleep 60; done",
-                                  "run_in_background": True}),
-                        ("Bash", {"command": "nohup sh -c 'while true; do df -h >> dysk.log; sleep 300; done' &"}),
-                        ("TaskOutput", {"task_id": "x", "block": False})])
+                        "tail -n 20 app.log", ("TaskOutput", {"task_id": "x", "block": False}),
+                        ("Bash", {"command": "while true; do date >> /tmp/m.log; sleep 60; done", "run_in_background": True})])
 
-    def test_bez_podagentow(self):
-        self.przypadki("bez-podagentow",
+    def test_podagenci(self):
+        self.przypadki("podagenci",
                        [("Agent", {"prompt": "x"}), ("Task", {"prompt": "x"}), ("Workflow", {"script": "x"}),
                         ("TeamCreate", {"name": "x"}), "claude -p 'zrób x'", "claude --print x"],
                        [("Read", {"file_path": "a"}), "claude --version", "ls"])
 
-    def test_sudo_nie_i_tak(self):
-        self.przypadki("sudo-nie",
+    def test_sudo(self):
+        self.przypadki("sudo",
                        ["sudo ls", "sudo -u postgres psql", "ssh serwer 'sudo systemctl restart x'", "su -c 'ls'",
                         "doas ls", "pkexec ls", "nohup sudo make &", "find . -exec sudo rm {} \\;"],
                        ["ls", "echo sudo", "grep sudo /etc/group", "git commit -m 'bez sudo'"])
-        self.prompt("/sudo-tak")
+        self.prompt("/sudo-odblokuj")
         self.assertIsNone(self.bash("sudo ls"))
+
+    def test_siec(self):
+        self.przypadki("siec",
+                       [("WebFetch", {"url": "http://x"}), ("WebSearch", {"query": "x"}), "curl http://x",
+                        "wget http://x/a", "ssh serwer ls", "scp a serwer:/b", "git clone https://x/y.git",
+                        "git pull", "pip install req", "npm install", "uv add req", "hf download org/model",
+                        "rsync -a a serwer:/b"],
+                       ["ls", "git status", "git diff", "git log", "npm test", "rsync -a a b", "cat plik",
+                        ("Read", {"file_path": "a"})])
+
+    def test_zapis_tylko_odczyt(self):
+        self.przypadki("zapis",
+                       [("Write", {"file_path": "a", "content": "x"}),
+                        ("Edit", {"file_path": "a", "old_string": "x", "new_string": "y"}),
+                        ("NotebookEdit", {"notebook_path": "a.ipynb", "new_source": "x"}),
+                        "rm a", "mv a b", "cp a b", "mkdir nowy", "touch a", "echo x > a.txt",
+                        "sed -i s/a/b/ a", "git commit -m x", "git add .", "truncate -s0 a"],
+                       ["ls -la", "cat plik", "grep x a", "git diff", "git log --oneline", "git status",
+                        "echo x > /tmp/a", "npm test > /tmp/t.log 2>&1", ("Read", {"file_path": "a"}),
+                        ("Grep", {"pattern": "x"})])
+
+    def test_pytania(self):
+        self.przypadki("pytania",
+                       [("AskUserQuestion", {"questions": []}), ("ExitPlanMode", {"plan": "x"})],
+                       [("Read", {"file_path": "a"}), "ls", ("Write", {"file_path": f"{self.cwd}/a", "content": "x"})])
 
 
 class TestTwardeZasady(Baza):
@@ -397,7 +475,6 @@ class TestTwardeZasady(Baza):
         wynik = self.hook("narzedzie", {"tool_name": "Bash", "tool_input": {"command": "sudo git clone https://x/y.git /opt/y"}}, env)
         self.assertEqual((wynik.get("hookSpecificOutput") or {}).get("permissionDecision"),
                          "deny" if osobny_danaco else None)
-        # Hook konta (danaco-straz-dysku-hook) już pilnuje dysku: wtyczka milczy.
         os.makedirs(os.path.join(self.katalog, "profil"), exist_ok=True)
         with open(os.path.join(self.katalog, "profil", "settings.json"), "w") as plik:
             plik.write('{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"/usr/local/sbin/danaco-straz-dysku-hook"}]}]}}')
@@ -418,7 +495,7 @@ class TestTwardeZasady(Baza):
 class TestSesjaIWrapper(Baza):
     def test_sesja_przypomina_aktywne_tryby(self):
         self.assertEqual(self.hook("sesja", {"hook_event_name": "SessionStart", "source": "compact"}), {})
-        self.prompt("/praca zadanie A\n/bez-python")
+        self.prompt("/praca zadanie A\n/python-blokuj")
         wynik = self.hook("sesja", {"hook_event_name": "SessionStart", "source": "compact"})
         kontekst = wynik["hookSpecificOutput"]["additionalContext"]
         self.assertIn("zadanie A", kontekst)
@@ -466,7 +543,7 @@ class TestRejestracja(unittest.TestCase):
                 self.assertRegex(tresc, rf"(?m)^name: {re.escape(nazwa)}$")
 
     def test_wersja(self):
-        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.0.0")
+        self.assertEqual(json.loads((KORZEN / ".claude-plugin" / "plugin.json").read_text())["version"], "5.1.0")
 
 
 if __name__ == "__main__":

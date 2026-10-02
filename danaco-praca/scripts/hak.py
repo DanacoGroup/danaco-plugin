@@ -54,63 +54,141 @@ def obsluz_polecenia(zdarzenie: dict) -> int:
         argumenty = str(zdarzenie.get("command_args") or zdarzenie.get("arguments") or "")
         if nazwa in P.POLECENIA and not P.rozpoznaj(tekst)[0]:
             tekst = f"/{nazwa} {argumenty}".strip()
-    lista, reszta = P.rozpoznaj(tekst)
+    pary, reszta = P.rozpoznaj(tekst)
     sesja = S.bezpieczna_sesja(zdarzenie.get("session_id"))
     magazyn = S.Magazyn()
-    if not lista:
-        # Zwykła wiadomość właściciela zaczyna nową turę: liczniki pętli od zera.
+    if not pary:
+        # Zwykła wiadomość właściciela zaczyna nową turę: licznik pętli od zera.
         stan = magazyn.wczytaj(sesja)
-        if stan["praca"]["wlaczona"] and any(stan["praca"]["bez_narzedzi"].values()):
+        if stan["praca"]["wlaczona"] and stan["praca"]["bez_narzedzi"]:
             with magazyn.blokada():
                 stan = magazyn.wczytaj(sesja)
                 stan["praca"]["bez_narzedzi"] = {}
                 magazyn.zapisz(stan)
         return 0
+
+    nazwy = [p for p, _ in pary]
+    zlecenie_pracy = ""
+    for polecenie, arg in pary:
+        if P.POLECENIA[polecenie] == ("praca", True) and arg:
+            zlecenie_pracy = arg
     zmiany: list[str] = []
+    widoki: list[str] = []
+    wlaczono_prace = False
+
     with magazyn.blokada():
         stan = magazyn.wczytaj(sesja)
-        for polecenie in lista:
-            cel = P.POLECENIA[polecenie]
-            if cel is None:
-                continue
-            klucz, wartosc = cel
-            if klucz == "praca":
-                stan["praca"]["wlaczona"] = wartosc
+        for polecenie, arg in pary:
+            rodzaj = P.POLECENIA[polecenie]
+            if rodzaj[0] == "praca":
+                stan["praca"]["wlaczona"] = rodzaj[1]
                 stan["praca"]["bez_narzedzi"] = {}
-                if wartosc:
-                    if reszta or not stan["praca"].get("od"):
-                        stan["praca"]["zlecenie"] = reszta[:4000]
+                if rodzaj[1]:
+                    tresc = "\n".join(x for x in (zlecenie_pracy, reszta) if x)
+                    if tresc or not stan["praca"].get("od"):
+                        stan["praca"]["zlecenie"] = tresc[:4000]
                     stan["praca"]["od"] = stan["praca"].get("od") or S.teraz()
+                    wlaczono_prace = True
                 else:
                     stan["praca"]["od"] = None
                     stan["praca"]["zlecenie"] = ""
-            else:
-                stan["blokady"][klucz] = wartosc
-            zmiany.append(polecenie)
+                zmiany.append(polecenie)
+            elif rodzaj[0] == "blok":
+                stan["blokady"][rodzaj[1]] = rodzaj[2]
+                zmiany.append(polecenie)
+            elif rodzaj == ("akcja", "wyczysc"):
+                stan["praca"] = S.pusty(sesja)["praca"]
+                for k in S.BLOKADY:
+                    stan["blokady"][k] = False
+                zmiany.append(polecenie)
+                widoki.append("Wszystkie blokady i tryb pracy zdjęte.")
         if zmiany:
             magazyn.zapisz(stan, {"zdarzenie": "polecenie", "polecenia": zmiany,
                                   "zrodlo": zdarzenie.get("hook_event_name") or "UserPromptSubmit",
                                   "cwd": zdarzenie.get("cwd")})
+
+    # Widoki i akcje pokazujące coś właścicielowi (po zapisie stanu).
+    for polecenie, arg in pary:
+        rodzaj = P.POLECENIA[polecenie]
+        if rodzaj == ("widok", "tryb"):
+            widoki.append(S.opis_stanu(stan))
+        elif rodzaj == ("widok", "dziennik"):
+            widoki.append("Ostatnie wpisy dziennika tej sesji:\n" + "\n".join(S.ogon_dziennika(magazyn, sesja)))
+        elif rodzaj == ("widok", "sesja-id"):
+            widoki.append(f"Identyfikator tej sesji: {zdarzenie.get('session_id') or '(nieznany)'}\n"
+                          f"Przejmij ją z innego konta: /przejmij {zdarzenie.get('session_id') or '<id>'}")
+        elif rodzaj == ("widok", "sesje"):
+            widoki.append(wywolaj_przejmij(["--lista"]))
+        elif rodzaj == ("akcja", "przejmij"):
+            widoki.append(przejmij_sesje(arg))
+
     opis = S.opis_stanu(stan)
-    if lista == ["tryb"] and not reszta:
-        # Sam podgląd: tabela dla właściciela bez angażowania modelu.
-        wypisz({"decision": "block", "reason": opis})
+    etykieta = ", ".join("/" + p for p in nazwy)
+    # Czysta wiadomość sterująca (same polecenia, bez zadania) — pokaż wynik i nie wołaj modelu.
+    if not reszta and not wlaczono_prace and "koniec-pracy" not in nazwy:
+        czesci = [f"{NAZWA_WTYCZKI}: {etykieta}"]
+        if zmiany:
+            czesci.append("")
+            czesci.append(opis)
+        if widoki:
+            czesci.append("")
+            czesci.append("\n\n".join(widoki))
+        wypisz({"decision": "block", "reason": "\n".join(czesci)})
         return 0
-    kontekst = [f"[{NAZWA_WTYCZKI}] Właściciel wydał polecenia: " + ", ".join("/" + p for p in lista) + ". Hook zapisał stan:", opis]
-    if "praca" in zmiany and stan["praca"]["wlaczona"]:
+
+    # Wiadomość ma też zadanie dla modelu: zapisz stan, podaj kontekst, pozwól pracować.
+    kontekst = [f"[{NAZWA_WTYCZKI}] Właściciel wydał polecenia: {etykieta}. Stan:", opis]
+    if wlaczono_prace:
         kontekst += ["", ZASADY_PRACY]
         if stan["praca"]["zlecenie"]:
             kontekst += ["", "Zlecenie: " + stan["praca"]["zlecenie"]]
-    if "koniec-pracy" in zmiany:
+    if widoki:
+        kontekst += ["", "\n\n".join(widoki)]
+    if "koniec-pracy" in nazwy:
         kontekst += ["", "Tryb pracy ciągłej jest wyłączony: wolno zakończyć turę krótkim raportem. Pozostałe blokady obowiązują bez zmian."]
     else:
         kontekst += ["", "Stanu nie zmieniasz i nie komentujesz go: przyjmij go i pracuj dalej."]
     wypisz({
-        "systemMessage": f"{NAZWA_WTYCZKI}: " + ", ".join("/" + p for p in lista) + " — zapisano.\n" + opis,
+        "systemMessage": f"{NAZWA_WTYCZKI}: {etykieta} — zapisano.\n" + opis,
         "hookSpecificOutput": {"hookEventName": zdarzenie.get("hook_event_name") or "UserPromptSubmit",
                                "additionalContext": "\n".join(kontekst)},
     })
     return 0
+
+
+# --- przejmowanie sesji (wrapper na danaco-przejmij-sesje) ----------------------------------------
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+#: Narzędzie systemowe; nadpisywalne w testach.
+PRZEJMIJ_CMD = os.environ.get("DANACO_PRZEJMIJ_CMD", "danaco-przejmij-sesje")
+BEZPIECZNY_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,120}$")
+
+
+def wywolaj_przejmij(argumenty: list[str]) -> str:
+    sciezka = shutil.which(PRZEJMIJ_CMD) or (PRZEJMIJ_CMD if os.path.isabs(PRZEJMIJ_CMD) and os.path.exists(PRZEJMIJ_CMD) else None)
+    if not sciezka:
+        return (f"Nie znaleziono narzędzia `{PRZEJMIJ_CMD}` (działa tylko na danaco-nexus). "
+                "Spis sesji wypiszesz w terminalu poleceniem `danaco-przejmij-sesje --lista`.")
+    try:
+        wynik = subprocess.run([sciezka, *argumenty], capture_output=True, text=True, timeout=25)
+    except Exception as blad:  # noqa: BLE001
+        return f"Nie udało się uruchomić `{PRZEJMIJ_CMD}`: {blad}"
+    tekst = (wynik.stdout + ("\n" + wynik.stderr if wynik.stderr.strip() else "")).strip()
+    return tekst[:6000] or "(brak wyniku)"
+
+
+def przejmij_sesje(identyfikator: str) -> str:
+    identyfikator = (identyfikator or "").strip()
+    if not identyfikator:
+        return ("Podaj identyfikator sesji: `/przejmij <id>` (ID bieżącej sesji pokaże `/sesja-id`, "
+                "spis sesji — `/sesje`).")
+    if not BEZPIECZNY_ID.match(identyfikator):
+        return f"Niepoprawny identyfikator sesji: {identyfikator!r}."
+    wynik = wywolaj_przejmij([identyfikator])
+    return ("Przejęcie sesji przygotowane. Dokończ je w terminalu poleceniem `wznowienie` poniżej "
+            "(tej sesji Claude nie może wznowić sam):\n" + wynik)
 
 
 # --- PreToolUse -----------------------------------------------------------------------------------
@@ -184,8 +262,8 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
             return ("deny", f"/{nazwa} przełącza wyłącznie właściciel, wpisując polecenie na czacie")
     if powloka is not None or re.search(r"(?i)send|message|notif|terminal|prompt|slash|push", narzedzie):
         if P.TOKEN.search(surowe if powloka is None else powloka):
-            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /z-…, /bez-…, /sudo-…, /tryb) "
-                            "wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
+            return ("deny", "Polecenia trybów danaco-praca (/praca, /koniec-pracy, /…-blokuj, /…-odblokuj, /tryb, "
+                            "/przejmij) wpisuje wyłącznie właściciel; nie przekazuj ich narzędziem ani poleceniem")
     if S.aktywne(stan):
         wynik = chroni_mechanizm(narzedzie, wejscie, powloka, surowe, cwd)
         if wynik:
@@ -196,7 +274,7 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
                 return ("deny", wynik)
     # 3. Blokady sesji.
     if blokady["bash"] and (narzedzie in ("Bash", "PowerShell", "Monitor") or (powloka is not None and narzedzie.startswith("mcp__"))):
-        return ("deny", f"Narzędzie {narzedzie} jest zablokowane poleceniem właściciela /bez-bash. "
+        return ("deny", f"Narzędzie {narzedzie} jest zablokowane poleceniem właściciela /bash-blokuj. "
                         "Pracuj narzędziami Read, Grep, Glob, Edit i Write")
     if blokady["podagenci"]:
         wynik = R.blokada_podagentow_narzedzie(narzedzie) or (R.blokada_podagentow_powloka(powloka) if powloka else None)
@@ -207,12 +285,31 @@ def ocen_narzedzie(zdarzenie: dict, stan: dict, katalog: str) -> tuple[str, str]
         wynik = (R.blokada_czekania_narzedzie(narzedzie, wejscie, scisle)
                  or (R.blokada_czekania(powloka, wejscie, scisle) if powloka and narzedzie != "Monitor" else None))
         if wynik:
-            zrodlo = "/praca" if praca and not blokady["sleep"] else "/bez-sleep"
+            zrodlo = "/praca" if praca and not blokady["sleep"] else "/sleep-blokuj"
             return ("deny", f"{wynik} [{zrodlo}]")
     if blokady["python"]:
         wynik = R.blokada_python_plik(narzedzie, wejscie) or (R.blokada_python(powloka, cwd) if powloka else None)
         if wynik:
             return ("deny", wynik)
+    if blokady["pytania"] and narzedzie in ("AskUserQuestion", "ExitPlanMode"):
+        return ("deny", "Pytania do właściciela są wstrzymane poleceniem /pytania-blokuj: przyjmij "
+                        "najrozsądniejsze założenie, zanotuj je i pracuj dalej")
+    if blokady["siec"]:
+        if narzedzie in ("WebFetch", "WebSearch"):
+            return ("deny", f"Sieć jest zablokowana poleceniem właściciela /siec-blokuj (narzędzie {narzedzie}). "
+                            "Pracuj na danych lokalnych; dostęp do sieci wróci po /siec-odblokuj")
+        if powloka:
+            wynik = R.blokada_sieci(powloka)
+            if wynik:
+                return ("deny", wynik)
+    if blokady["zapis"]:
+        if narzedzie in NARZEDZIA_PLIKOWE:
+            return ("deny", "Tryb tylko-odczyt jest włączony poleceniem właściciela /zapis-blokuj "
+                            f"(narzędzie {narzedzie}). Oglądaj i analizuj; pliki zmienisz po /zapis-odblokuj")
+        if powloka:
+            wynik = R.blokada_zapisu(powloka)
+            if wynik:
+                return ("deny", wynik)
     if powloka:
         if blokady["sudo"]:
             wynik = R.blokada_sudo(powloka)

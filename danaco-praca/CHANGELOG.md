@@ -9,6 +9,52 @@ wersji 3.0.0 przez wydzielenie mechanizmu trybu ciągłej pracy z pluginu
 `danaco-plugin`; wpisy poniżej wersji 3.0.0 opisują ten mechanizm w jego dawnym
 miejscu i zostały przeniesione bez zmian.
 
+## [5.1.0] — 2026-10-02
+
+Rozbudowa przed publikacją: komendy przejmowania sesji, nowe blokady i jedna, spójna
+konwencja nazw par włącz/wyłącz. Sprawdzane na kliencie Claude Code 2.1.287.
+
+### Zmienione (niezgodne wstecz)
+
+- **Nowa konwencja nazw blokad:** każda para to `/<temat>-blokuj` (włącza) i
+  `/<temat>-odblokuj` (zdejmuje). Zastępuje niespójne `/bez-…`/`/z-…` i `/sudo-nie`/`/sudo-tak`.
+  Zmiana nazw: `/bez-bash`→`/bash-blokuj`, `/z-bash`→`/bash-odblokuj`;
+  `/bez-python`→`/python-blokuj`, `/z-python`→`/python-odblokuj`;
+  `/bez-masowych`→`/masowe-blokuj`, `/z-masowymi`→`/masowe-odblokuj`;
+  `/reczne-pisanie`→`/skrypty-blokuj`, `/z-skryptami`→`/skrypty-odblokuj`;
+  `/bez-sleep`→`/sleep-blokuj`, `/z-sleep`→`/sleep-odblokuj`;
+  `/bez-podagentow`→`/podagenci-blokuj`, `/z-podagentami`→`/podagenci-odblokuj`;
+  `/sudo-nie`→`/sudo-blokuj`, `/sudo-tak`→`/sudo-odblokuj`. Tryb pracy i polecenia stanu
+  bez zmian (`/praca`, `/koniec-pracy`, `/tryb`).
+- Sama komenda sterująca (bez zadania dla agenta) nie uruchamia już modelu — hook pokazuje
+  wynik przez `decision: block`. `/koniec-pracy` i `/praca <zlecenie>` dalej przepuszczają
+  turę (raport końcowy albo start pracy).
+
+### Dodane
+
+- **Komendy sesji:** `/sesja-id` (wypisuje identyfikator bieżącej sesji), `/sesje`
+  (lista sesji obu kont — `danaco-przejmij-sesje --lista`) i `/przejmij <id>` (nakładka na
+  `danaco-przejmij-sesje <id>`, podaje gotowe `claude --resume`; identyfikator sprawdzany
+  wzorcem). Samego `claude --resume` hook nie odpala (brak terminala) — wkleja właściciel.
+- **Trzy nowe blokady:** `/siec-blokuj` (WebFetch, WebSearch, `curl`/`wget`/`ssh`/`scp`,
+  zdalny `rsync`, `git clone`/`fetch`/`pull`/`push`, pobieranie menedżerami pakietów),
+  `/zapis-blokuj` (tryb tylko-odczyt: narzędzia plikowe i zmiana plików w powłoce; odczyt,
+  analiza i budowa przechodzą) oraz `/pytania-blokuj` (AskUserQuestion, ExitPlanMode).
+- **Polecenie `/dziennik`** — ostatnie wpisy dziennika tej sesji (zmiany trybów, odmowy,
+  bezpiecznik) pokazane właścicielowi — oraz **`/wyczysc-tryby`** — zdjęcie naraz trybu
+  pracy i wszystkich blokad.
+- 28 skilli poleceń (było 17), wszystkie z `disable-model-invocation: true`.
+
+### Egzekwowanie
+
+- `scripts/reguly.py`: `blokada_sieci`, `blokada_zapisu` (reguły sieci i zapisu), rozbiór
+  zdalnych celów `rsync`/`scp`.
+- `hooks/hooks.json` bez zmian co do zdarzeń (`UserPromptSubmit`, `PreToolUse`, `Stop`,
+  `SessionStart`, `SubagentStart`).
+- Testy: `tests/test_hooki.py` rozszerzone do 53 testów (nowe blokady, komendy sesji,
+  `/dziennik`, `/wyczysc-tryby`, spójność konwencji nazw); atrapa `danaco-przejmij-sesje`
+  w testach (`DANACO_PRZEJMIJ_CMD`).
+
 ## [5.0.0] — 2026-10-02
 
 Przebudowa od podstaw: wtyczka daje właścicielowi polecenia „/” sterujące trybem pracy

@@ -38,6 +38,24 @@ BLOKADY = {
     "sleep": "uśpienie",
     "podagenci": "podagenci",
     "sudo": "sudo",
+    "siec": "sieć",
+    "zapis": "zapis plików",
+    "pytania": "pytania",
+}
+
+#: Para poleceń włączających/zwalniających każdą blokadę (temat -> klucz stanu).
+#: Nazwy wg jednej zasady: `/<temat>-blokuj` włącza, `/<temat>-odblokuj` zwalnia.
+TEMATY = {
+    "bash": "bash",
+    "python": "python",
+    "masowe": "masowe",
+    "skrypty": "reczne",
+    "sleep": "sleep",
+    "podagenci": "podagenci",
+    "sudo": "sudo",
+    "siec": "siec",
+    "zapis": "zapis",
+    "pytania": "pytania",
 }
 
 LIMIT_DZIENNIKA = 5 * 1024 * 1024
@@ -238,23 +256,42 @@ def opis_stanu(stan: dict) -> str:
             wiersze.append(f"                 zlecenie: {zlecenie[:300]}")
     else:
         wiersze.append("  praca ciągła   wyłączona (/praca włącza)")
-    pary = {
-        "bash": ("/bez-bash", "/z-bash"),
-        "python": ("/bez-python", "/z-python"),
-        "masowe": ("/bez-masowych", "/z-masowymi"),
-        "reczne": ("/reczne-pisanie", "/z-skryptami"),
-        "sleep": ("/bez-sleep", "/z-sleep"),
-        "podagenci": ("/bez-podagentow", "/z-podagentami"),
-        "sudo": ("/sudo-nie", "/sudo-tak"),
-    }
+    # Para poleceń dla każdej blokady z TEMATY (temat -> klucz); odwrotnie: klucz -> temat.
+    temat_klucza = {klucz: temat for temat, klucz in TEMATY.items()}
     for klucz, nazwa in BLOKADY.items():
-        wlacz, zwolnij = pary[klucz]
+        temat = temat_klucza[klucz]
+        wlacz, zwolnij = f"/{temat}-blokuj", f"/{temat}-odblokuj"
         if stan["blokady"].get(klucz):
             wiersze.append(f"  {nazwa:<14} ZABLOKOWANE ({zwolnij} zwalnia)")
         elif klucz == "sudo":
             wiersze.append(f"  {nazwa:<14} zgodnie z kontem ({wlacz} blokuje)")
         elif klucz == "sleep" and praca.get("wlaczona"):
-            wiersze.append(f"  {nazwa:<14} zablokowane przez tryb pracy ({wlacz} blokuje także poza nim)")
+            wiersze.append(f"  {nazwa:<14} zablokowane przez tryb pracy ({wlacz} blokuje ściślej)")
         else:
             wiersze.append(f"  {nazwa:<14} dozwolone ({wlacz} blokuje)")
     return "\n".join(wiersze)
+
+
+def ogon_dziennika(magazyn, sesja: str, ile: int = 15) -> list[str]:
+    """Ostatnie wpisy dziennika tej sesji (dla polecenia /dziennik) jako wiersze tekstu."""
+    wynik: list[str] = []
+    for sciezka in (magazyn.dziennik + ".1", magazyn.dziennik):
+        try:
+            with open(sciezka, encoding="utf-8") as plik:
+                for wiersz in plik:
+                    if f'"sesja": "{sesja}"' not in wiersz and f'"sesja":"{sesja}"' not in wiersz:
+                        continue
+                    try:
+                        wpis = json.loads(wiersz)
+                    except ValueError:
+                        continue
+                    if wpis.get("sesja") != sesja:
+                        continue
+                    czas = (wpis.get("czas") or "")[:19]
+                    zdarzenie = wpis.get("zdarzenie", "?")
+                    szczegol = (wpis.get("polecenia") and " ".join(wpis["polecenia"])) or wpis.get("narzedzie") or ""
+                    powod = (wpis.get("powod") or "").split(".")[0][:80]
+                    wynik.append(f"  {czas}  {zdarzenie:18} {szczegol} {powod}".rstrip())
+        except OSError:
+            continue
+    return wynik[-ile:] if wynik else ["  (dziennik tej sesji jest pusty)"]

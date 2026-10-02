@@ -90,7 +90,7 @@ PROBY = [
     },
     {
         "nazwa": "4-blokady-wlaczone",
-        "prompt": "/bez-bash\n/bez-podagentow",
+        "prompt": "/bash-blokuj\n/podagenci-blokuj",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "echo zakazane", "description": "x"}},
             {"narzedzie": "Agent", "wejscie": {"description": "x", "prompt": "zrób", "subagent_type": "general-purpose"}},
@@ -99,21 +99,38 @@ PROBY = [
         ],
     },
     {
+        "nazwa": "4b-nowe-blokady",
+        "prompt": "/wyczysc-tryby\n/siec-blokuj\n/zapis-blokuj\n/pytania-blokuj\nzbadaj repo",
+        "scenariusz": [
+            {"narzedzie": "WebFetch", "wejscie": {"url": "https://example.org", "prompt": "co tam jest"}},
+            {"narzedzie": "Bash", "wejscie": {"command": "curl -s https://example.org", "description": "x"}},
+            {"narzedzie": "Write", "wejscie": {"file_path": "/tmp/dp5/a.txt", "content": "x"}},
+            {"narzedzie": "AskUserQuestion", "wejscie": {"questions": []}},
+            {"narzedzie": "Bash", "wejscie": {"command": "grep -r TODO .", "description": "analiza"}},
+            {"tekst": "x"}, {"tekst": "x"}, {"tekst": "x"}, {"tekst": "x"},
+        ],
+    },
+    {
+        "nazwa": "4c-sesja-id",
+        "prompt": "/sesja-id",
+        "scenariusz": [{"tekst": "NIE-POWINNO-DOJSC"}],
+    },
+    {
         "nazwa": "5-tryb-podglad",
         "prompt": "/tryb",
         "scenariusz": [{"tekst": "NIE-POWINNO-DOJSC"}],
     },
     {
         "nazwa": "6-koniec-pracy-zwalnia",
-        "prompt": "/koniec-pracy\n/z-bash\n/z-podagentami",
+        "prompt": "/koniec-pracy\n/bash-odblokuj\n/podagenci-odblokuj",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "echo znowu-wolno", "description": "x"}},
             {"tekst": "Raport końcowy."},
         ],
     },
     {
-        "nazwa": "7-bez-sleep-poza-praca",
-        "prompt": "/bez-sleep",
+        "nazwa": "7-sleep-blokuj-poza-praca",
+        "prompt": "/wyczysc-tryby\n/sleep-blokuj\nzmierz czas",
         "scenariusz": [
             {"narzedzie": "Bash", "wejscie": {"command": "sleep 2", "description": "x"}},
             {"tekst": "Koniec bez pracy ciągłej."},
