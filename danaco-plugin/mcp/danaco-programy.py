@@ -43,7 +43,10 @@ WSTEP_INSTRUKCJI = (
     "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy). Katalog to drzewo: poniżej są wszystkie "
     "dziedziny z opisem zawartości. Gdy zadanie dotyczy dziedziny, otwórz ją narzędziem `lista` (programy dziedziny "
     "z krótkim opisem). Przed pierwszym użyciem programu w sesji obowiązkowo przeczytaj `opis` (opis szczegółowy "
-    "i skill) - bez tego uruchomienie programu jest blokowane. Zanim cokolwiek zainstalujesz albo uznasz, że "
+    "i skill) - bez tego uruchomienie programu jest blokowane; dotyczy to każdego programu w poleceniu, także "
+    "podstawowych (ls, cat, grep, sed, ssh), więc sprawdź polecenie przed wysłaniem. Skill wspólny dla kilku "
+    "programów czytasz raz: dla kolejnych programów z tym samym skillem wystarczy `opis` z pelny=false. "
+    "Zanim cokolwiek zainstalujesz albo uznasz, że "
     "narzędzia brak, otwórz właściwą dziedzinę. "
     + ("Na tym serwerze (nexus) polecenia uruchamiasz po nazwie w Bash albo przez `uruchom`."
        if TRYB == "lokalny" else

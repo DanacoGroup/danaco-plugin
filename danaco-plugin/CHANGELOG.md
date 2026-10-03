@@ -5,6 +5,11 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## 3.4.1 (03.10.2026)
+- Hook `obowiazek_opisu`: program zaliczony dopiero z przeczytanym skillem (w tym wywołaniu `opis` albo wcześniej w sesji); skill wspólny kilku programów czyta się raz, dla kolejnych wystarcza `opis` z pelny=false, a odmowa mówi, który wariant jest potrzebny.
+- Hook nie rozbiera treści heredoców na polecenia (fałszywe odmowy np. dla wiersza kodu `global s`); ochrona stanu sprawdza tylko rzeczywistą ścieżkę katalogu stanu (polecenie albo zapisywany plik), więc edycja kodu hooka nie jest blokowana; katalog stanu: `przeczytane-opisy`.
+- Instrukcje serwera `danaco-programy`: obowiązek dotyczy też podstawowych poleceń powłoki, skill wspólny czyta się raz.
+
 ## 3.4.0 (02.10.2026)
 - Serwer MCP `danaco-programy` 1.4.0: instrukcje serwera podają wszystkie dziedziny katalogu z opisem zawartości (drzewo: dziedzina → `lista` → `opis`); `lista` zwraca krótki opis każdego programu z rejestru.
 - Nowy hook `obowiazek_opisu`: program z katalogu (każda z pozycji rejestru) wolno uruchomić w Bash, Monitor albo `uruchom` dopiero po przeczytaniu w tej sesji jego `opis` (opis szczegółowy i skill); stan zapisuje wyłącznie hook.
