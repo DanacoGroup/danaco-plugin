@@ -116,7 +116,7 @@ class TestPoZapisie(BazaTestow):
 class TestKonfiguracjaHookow(unittest.TestCase):
     """Kontrakt hooks.json wobec plików pluginu (zamówienie U1 z A1-20)."""
 
-    NAZWY_ZDARZEN = {"PostToolUse"}
+    NAZWY_ZDARZEN = {"PostToolUse", "PreToolUse"}
 
     def setUp(self) -> None:
         self.dane = json.loads((KORZEN_PLUGINU / "hooks" / "hooks.json").read_text(encoding="utf-8"))

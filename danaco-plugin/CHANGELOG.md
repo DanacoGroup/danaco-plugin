@@ -5,11 +5,9 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
-## 3.3.1 (02.10.2026)
-- Odwołania do poleceń `danaco-praca` zaktualizowane do wersji 5.0.0 (`/praca` zamiast paczki `pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.
-
-## 3.3.1 (02.10.2026)
-- Odwołania do poleceń `danaco-praca` zaktualizowane do 5.x (polecenia `/praca`, `/<temat>-blokuj`, komendy sesji zamiast `/pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.
+## 3.4.0 (02.10.2026)
+- Serwer MCP `danaco-programy` 1.4.0: instrukcje serwera podają wszystkie dziedziny katalogu z opisem zawartości (drzewo: dziedzina → `lista` → `opis`); `lista` zwraca krótki opis każdego programu z rejestru.
+- Nowy hook `obowiazek_opisu`: program z katalogu (każda z pozycji rejestru) wolno uruchomić w Bash, Monitor albo `uruchom` dopiero po przeczytaniu w tej sesji jego `opis` (opis szczegółowy i skill); stan zapisuje wyłącznie hook.
 
 ## 3.3.1 (02.10.2026)
 - Odwołania do poleceń `danaco-praca` zaktualizowane do 5.x (polecenia `/praca`, blokady `/blokuj-<temat>`, stan `/tryb-*`, sesje `/sesja-*` zamiast `/pracuj`, `/stop`, `/blokada`): README (rozdział 9) i opis paczki `orkiestracja-agentow`. Bez zmian w działaniu.

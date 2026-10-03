@@ -10,6 +10,28 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "^mcp__.*danaco-programy__opis$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/obowiazek_opisu.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/obowiazek_opisu.sh\" po",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit|mcp__.*danaco-programy__uruchom)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PLUGIN_ROOT}/hooks/obowiazek_opisu.sh\" ] && sh \"${CLAUDE_PLUGIN_ROOT}/hooks/obowiazek_opisu.sh\" przed",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

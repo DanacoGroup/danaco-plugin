@@ -37,13 +37,14 @@ WYMIANA = "/danaco/wymiana"  # na nexusie: /danaco/wymiana/<konto>/<serwer>/<zad
 MAKS_SKILL = 60000  # znaków SKILL.md zwracanych przez `opis`
 MAKS_WYJSCIE = 20000  # znaków stdout/stderr zwracanych przez `uruchom`
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
-WERSJA = "1.3.0"
+WERSJA = "1.4.0"
 
-INSTRUKCJE = (
-    "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy, ponad 1000 poleceń: grafika, wideo, "
-    "dźwięk, 3D, dokumenty, kod, dane, web, devops, bezpieczeństwo, testy, modele AI). Zanim cokolwiek "
-    "zainstalujesz albo uznasz, że narzędzia brak, wyszukaj je tutaj (`szukaj`), a przed pierwszym użyciem "
-    "przeczytaj `opis`. "
+WSTEP_INSTRUKCJI = (
+    "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy). Katalog to drzewo: poniżej są wszystkie "
+    "dziedziny z opisem zawartości. Gdy zadanie dotyczy dziedziny, otwórz ją narzędziem `lista` (programy dziedziny "
+    "z krótkim opisem). Przed pierwszym użyciem programu w sesji obowiązkowo przeczytaj `opis` (opis szczegółowy "
+    "i skill) - bez tego uruchomienie programu jest blokowane. Zanim cokolwiek zainstalujesz albo uznasz, że "
+    "narzędzia brak, otwórz właściwą dziedzinę. "
     + ("Na tym serwerze (nexus) polecenia uruchamiasz po nazwie w Bash albo przez `uruchom`."
        if TRYB == "lokalny" else
        "Ten serwer NIE ma programów: uruchamiaj je narzędziem `uruchom` - pliki wejściowe trafiają na nexusa "
@@ -354,7 +355,7 @@ def narzedzie_lista(arg: dict) -> str:
     wpisy = sorted((n, w) for n, w in INDEKS.wpisy.items() if zloz(w["dzial"]) == dzial)
     if not wpisy:
         return f"Nie ma działu „{arg.get('dzial')}”. Dostępne: {', '.join(sorted(INDEKS.dzialy))}."
-    return "\n".join([f"Dział {arg.get('dzial')} ({len(wpisy)}):"] + [f"- {n}: {w.get('do_czego', '')}" for n, w in wpisy])
+    return "\n".join([f"Dział {arg.get('dzial')} ({len(wpisy)}):"] + [f"- {n}: {w.get('krotki_opis') or w.get('do_czego', '')}" for n, w in wpisy])
 
 
 NARZEDZIA = {
@@ -367,7 +368,7 @@ NARZEDZIA = {
         },
         "required": ["zapytanie"],
     }),
-    "opis": (narzedzie_opis, "Pełny opis jednego programu albo skilla: ścieżka, do czego, kiedy używać, test działania oraz cała instrukcja SKILL.md z przykładami i pułapkami. Używaj przed pierwszym użyciem programu.", {
+    "opis": (narzedzie_opis, "Opis szczegółowy programu i jego skill (SKILL.md z przykładami i pułapkami). Obowiązkowy przed pierwszym użyciem programu w sesji - bez niego uruchomienie programu jest blokowane.", {
         "type": "object",
         "properties": {
             "nazwa": {"type": "string", "description": "Dokładna nazwa polecenia albo skilla"},
@@ -387,12 +388,21 @@ NARZEDZIA = {
         "required": ["polecenie"],
     }),
     "dzialy": (narzedzie_dzialy, "Lista działów katalogu programów z liczbą poleceń i opisem działu.", {"type": "object", "properties": {}}),
-    "lista": (narzedzie_lista, "Wszystkie polecenia jednego działu z jednozdaniowym opisem.", {
+    "lista": (narzedzie_lista, "Otwiera dziedzinę katalogu: wszystkie jej programy z krótkim opisem. Dziedziny są w instrukcji tego serwera.", {
         "type": "object",
         "properties": {"dzial": {"type": "string", "description": "Nazwa działu z `dzialy`"}},
         "required": ["dzial"],
     }),
 }
+
+
+def instrukcje() -> str:
+    """Zasady i wszystkie dziedziny z jednym zdaniem opisu; nazwy programów niosą narzędzia."""
+    INDEKS.odswiez()
+    wiersze = [WSTEP_INSTRUKCJI, "", f"Dziedziny ({len(INDEKS.dzialy)}, razem {len(INDEKS.wpisy)} programów):"]
+    for nazwa, d in sorted(INDEKS.dzialy.items()):
+        wiersze.append(f"- {nazwa} ({d['liczba']}): {d.get('opis', '')}".rstrip(": "))
+    return "\n".join(wiersze)
 
 
 def odpowiedz(id_, wynik=None, blad=None):
@@ -415,7 +425,7 @@ def obsluz(kom: dict):
             "protocolVersion": wersja,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "danaco-programy", "version": WERSJA},
-            "instructions": INSTRUKCJE,
+            "instructions": instrukcje(),
         })
     elif metoda == "ping":
         odpowiedz(id_, {})
