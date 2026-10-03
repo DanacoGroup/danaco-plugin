@@ -1,0 +1,3 @@
+#!/bin/sh
+# Plik wykonywalny wtyczki: w PATH narzędzia Bash, gdy wtyczka jest włączona.
+git status --short && git log --oneline -5

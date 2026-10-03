@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [],
+    "filesystem": {
+      "denyRead": ["~/.ssh", "~/.aws", "~/.config/gcloud"],
+      "denyWrite": []
+    },
+    "network": {
+      "strictAllowlist": true,
+      "allowAllUnixSockets": false,
+      "allowedDomains": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "github.com"],
+      "deniedDomains": ["pastebin.com", "transfer.sh"]
+    },
+    "credentials": {
+      "envVars": [
+        {"name": "GITHUB_TOKEN", "mode": "deny"},
+        {"name": "NPM_TOKEN", "mode": "deny"}
+      ]
+    }
+  },
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "disableBypassPermissionsMode": "disable",
+    "deny": ["Read(~/.ssh/**)", "Read(~/.aws/**)"]
+  },
+  "disableAutoMode": "disable"
+}

@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "wzor": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/narzedzia/serwer_wzorcowy.py"],
+      "env": {
+        "WZOR_DOZWOLONE": "touch,mkdir,ls"
+      }
+    },
+    "dokumentacja": {
+      "type": "http",
+      "url": "${DOCS_MCP_URL:-https://mcp.example.com/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${DOCS_MCP_TOKEN:-}"
+      }
+    },
+    "wewnetrzne-api": {
+      "type": "http",
+      "url": "https://mcp.wewnetrzne.example.com/mcp",
+      "headersHelper": "/opt/narzedzia/naglowki-mcp.sh",
+      "timeout": 120000
+    }
+  }
+}

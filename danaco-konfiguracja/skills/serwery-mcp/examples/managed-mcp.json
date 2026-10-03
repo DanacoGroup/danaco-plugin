@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "dokumentacja": {
+      "type": "http",
+      "url": "https://mcp.wewnetrzne.example.com/dokumentacja"
+    },
+    "repozytoria": {
+      "type": "http",
+      "url": "https://mcp.wewnetrzne.example.com/git",
+      "headersHelper": "/usr/local/bin/naglowki-mcp-sso"
+    },
+    "lokalne-narzedzia": {
+      "type": "stdio",
+      "command": "/usr/local/bin/firmowy-serwer-mcp",
+      "args": ["--konfiguracja", "/etc/firma/mcp.json"]
+    }
+  }
+}

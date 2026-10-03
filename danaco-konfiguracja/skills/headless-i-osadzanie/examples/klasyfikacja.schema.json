@@ -1,0 +1,1 @@
+{"type":"object","properties":{"kategoria":{"type":"string","enum":["pytanie","błąd","prośba"]},"pilne":{"type":"boolean"}},"required":["kategoria","pilne"],"additionalProperties":false}

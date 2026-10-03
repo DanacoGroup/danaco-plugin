@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "zespol-przyklad": {
+      "source": {
+        "source": "github",
+        "repo": "przyklad/claude-wtyczki",
+        "ref": "main"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "narzedzia-zespolu@zespol-przyklad": true
+  }
+}

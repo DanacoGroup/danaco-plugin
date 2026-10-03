@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "attribution": false,
+  "includeGitInstructions": false,
+  "language": "polski",
+  "disableAutoMode": "disable",
+  "autoMemoryEnabled": false,
+  "disableBundledSkills": true,
+  "syncClaudeAiSkills": false,
+  "syncClaudeAiPlugins": false,
+  "disableClaudeAiConnectors": true,
+  "disableWorkflows": true,
+  "workflowKeywordTriggerEnabled": false,
+  "disableAgentView": true,
+  "crossSessionInbound": "refuse",
+  "enableArtifact": false,
+  "disableRemoteControl": true,
+  "fastMode": false,
+  "maxEffortLevel": "xhigh",
+  "cleanupPeriodDays": 30,
+  "promptCacheTtl": "1h",
+  "availableModels": [
+    "claude-opus-5-5",
+    "claude-sonnet-5"
+  ],
+  "allowedMcpServers": [
+    {
+      "serverName": "produkt"
+    }
+  ],
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "mcp__produkt",
+      "ToolSearch",
+      "Agent",
+      "WebSearch"
+    ],
+    "deny": [
+      "Agent(model:*)",
+      "Agent(isolation:*)",
+      "WebFetch(domain:pastebin.com)",
+      "WebFetch(domain:transfer.sh)",
+      "WebFetch(domain:*.ngrok-free.app)",
+      "WebFetch(domain:*.ngrok.io)"
+    ]
+  }
+}

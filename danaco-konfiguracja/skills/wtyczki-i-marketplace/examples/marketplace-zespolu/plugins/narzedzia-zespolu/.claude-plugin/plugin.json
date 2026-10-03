@@ -1,0 +1,21 @@
+{
+  "name": "narzedzia-zespolu",
+  "displayName": "Narzędzia zespołu",
+  "version": "1.0.0",
+  "description": "Zasady commitów (skill), recenzent zmian (agent) i formatowanie Pythona po edycji (hook).",
+  "author": {
+    "name": "Zespół Przykład",
+    "email": "zespol@example.com"
+  },
+  "license": "MIT",
+  "keywords": ["git", "przeglad", "formatowanie"],
+  "userConfig": {
+    "formater": {
+      "type": "string",
+      "title": "Formater",
+      "description": "Program formatujący pliki Pythona po edycji",
+      "options": ["ruff", "black", "brak"],
+      "default": "ruff"
+    }
+  }
+}

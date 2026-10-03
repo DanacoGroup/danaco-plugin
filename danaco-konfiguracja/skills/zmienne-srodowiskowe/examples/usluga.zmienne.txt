@@ -1,0 +1,18 @@
+# Środowisko procesu `claude` w usłudze (EnvironmentFile systemd / docker --env-file).
+# Bez sekretów — poświadczenie przekazuj deskryptorem pliku (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR,
+# nieopisana w cc:env-vars, obecna w binarce 2.1.286 i używana przez Danaco Nexus)
+# albo apiKeyHelper w --settings, nie w tym pliku.
+CLAUDE_CONFIG_DIR=/srv/produkt/dzierzawcy/k123/claude
+CLAUDE_CODE_PROJECT_DIR_NAME=k123
+CLAUDE_CODE_TMPDIR=/srv/produkt/dzierzawcy/k123/tmp
+CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+CLAUDE_CODE_DISABLE_CLAUDE_MDS=1
+# SCRUB=1 wymusza tryb default (2.1.286) — w -p działa jak dontAsk z listą allow; tworzy zaślepki w cwd
+CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
+CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1
+CLAUDE_CODE_DISABLE_FAST_MODE=1
+CLAUDE_CODE_STARTUP_FAILURE_RESULTS=1
+CLAUDE_CODE_PROMPT_CACHE_TTL=1h
+DISABLE_AUTOUPDATER=1
+CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH=8000
+OTEL_RESOURCE_ATTRIBUTES=tenant.id=k123

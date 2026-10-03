@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dokumentacja-zespolu": {
+      "type": "http",
+      "url": "https://mcp.example.com/dokumentacja"
+    }
+  }
+}

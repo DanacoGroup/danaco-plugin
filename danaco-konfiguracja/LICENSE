@@ -1,0 +1,59 @@
+LICENCJA ZASTRZEŻONA — WTYCZKA CLAUDE-CODE-KONFIGURACJA
+
+Copyright © 2026 Danaco Holding Group Sp. z o.o. Wszelkie prawa zastrzeżone.
+
+1. Przedmiot licencji
+
+Przedmiotem licencji jest niniejszy plugin do Claude Code wraz z całą zawartością
+katalogu, w którym znajduje się ten plik: paczki skilli, dokumentacja, szablony
+konfiguracji, skrypty powłoki i skrypty Pythona, testy oraz materiały pomocnicze.
+
+2. Zakres dozwolonego korzystania
+
+Korzystanie z przedmiotu licencji jest dozwolone wyłącznie na użytek wewnętrzny
+Danaco Holding Group Sp. z o.o. oraz osób i podmiotów, którym uprawniony przedstawiciel
+spółki udzielił na to wyraźnej, pisemnej zgody. Dozwolone korzystanie obejmuje
+instalację, uruchamianie i wykonywanie kopii zapasowych w zakresie niezbędnym do
+korzystania wewnętrznego.
+
+3. Zakazy
+
+Bez uprzedniej, wyraźnej, pisemnej zgody uprawnionego przedstawiciela
+Danaco Holding Group Sp. z o.o. zabronione jest w szczególności:
+
+- udostępnianie przedmiotu licencji osobom trzecim, publikowanie go, rozpowszechnianie
+  ani wprowadzanie do obrotu w jakiejkolwiek formie, odpłatnie lub nieodpłatnie;
+- sublicencjonowanie, najem, dzierżawa, użyczenie ani powierzanie do korzystania;
+- wykorzystywanie przedmiotu licencji ani jego części do świadczenia usług osobom
+  trzecim oraz w produktach przeznaczonych dla osób trzecich;
+- tworzenie i rozpowszechnianie opracowań, w tym utworów zależnych, powstałych na
+  podstawie przedmiotu licencji;
+- usuwanie i zmienianie oznaczeń autorstwa oraz not o prawach autorskich.
+
+4. Modyfikacje na użytek wewnętrzny
+
+Zmiany wprowadzane na użytek wewnętrzny w zakresie dozwolonego korzystania są dopuszczalne
+i pozostają objęte niniejszą licencją. Nie powstaje z nich uprawnienie do rozpowszechniania
+zmienionej wersji.
+
+5. Brak przeniesienia praw
+
+Niniejsza licencja nie przenosi autorskich praw majątkowych ani praw do znaków
+towarowych. Wszelkie prawa nieudzielone wprost pozostają przy
+Danaco Holding Group Sp. z o.o.
+
+6. Wyłączenie gwarancji i odpowiedzialności
+
+Przedmiot licencji jest udostępniany w stanie, w jakim się znajduje, bez jakiejkolwiek
+gwarancji, w tym bez gwarancji przydatności do określonego celu, poprawności działania
+i nieprzerwanej dostępności. Danaco Holding Group Sp. z o.o. nie ponosi odpowiedzialności
+za jakiekolwiek szkody wynikające z korzystania z przedmiotu licencji ani z braku
+możliwości korzystania z niego, w najszerszym zakresie dopuszczalnym przez prawo.
+
+7. Prawo właściwe
+
+Do niniejszej licencji stosuje się prawo polskie.
+
+8. Kontakt
+
+W sprawach dotyczących warunków korzystania: support@danaco-group.pl

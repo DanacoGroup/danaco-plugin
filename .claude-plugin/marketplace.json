@@ -4,7 +4,7 @@
     "name": "Danaco Group"
   },
   "metadata": {
-    "description": "Wtyczki Danaco Group dla wszystkich serwerów i kont: standardy inżynierskie z serwerem MCP katalogu programów (danaco-plugin) oraz polecenia trybu pracy agenta ze strażą sekretów i dysku (danaco-praca)."
+    "description": "Wtyczki Danaco Group dla wszystkich serwerów i kont: standardy inżynierskie z serwerem MCP katalogu programów (danaco-plugin) oraz polecenia trybu pracy agenta ze strażą sekretów i dysku (danaco-praca); wiedza i narzędzia konfiguracji Claude Code (danaco-konfiguracja)."
   },
   "plugins": [
     {
@@ -18,6 +18,12 @@
       "source": "./danaco-plugin",
       "version": "3.4.0",
       "description": "Standardy inżynierskie Danaco w 15 paczkach wiedzy i umiejętności: architektura, kodowanie, kontrola jakości, UI/UX, dokumentacja, kontrakt i nazewnictwo, wraz z maszynowymi walidatorami dyscypliny i nazewnictwa, hookiem kontroli po zapisie pliku oraz serwerem MCP katalogu programów danaco-nexus (tryb lokalny na nexusie, zdalny na pozostałych serwerach)."
+    },
+    {
+      "name": "danaco-konfiguracja",
+      "source": "./danaco-konfiguracja",
+      "version": "1.0.0",
+      "description": "Wiedza i narzędzia do konfiguracji Claude Code i CLI: ustawienia, uprawnienia, piaskownica, hooki, MCP, podagenci, skille, wtyczki, instrukcja systemowa, tryb -p i SDK, model/cache/koszty, zmienne, flota, diagnostyka, bezpieczeństwo — z walidatorami, generatorem profili, poleceniem audytu i podagentem audytora."
     }
   ]
 }

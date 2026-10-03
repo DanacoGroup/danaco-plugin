@@ -1,0 +1,26 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "excludedCommands": [],
+    "filesystem": {
+      "allowManagedReadPathsOnly": true,
+      "denyRead": ["~/.ssh", "~/.aws", "~/.config/gcloud", "~/.kube"]
+    },
+    "network": {
+      "allowManagedDomainsOnly": true,
+      "allowedDomains": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "github.com", "codeload.github.com"],
+      "deniedDomains": ["pastebin.com", "transfer.sh"]
+    },
+    "credentials": {
+      "files": [
+        {"path": "~/.netrc", "mode": "deny"}
+      ]
+    }
+  },
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": ["Read(~/.ssh/**)", "Read(~/.aws/**)"]
+  }
+}

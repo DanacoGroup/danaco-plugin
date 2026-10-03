@@ -1,0 +1,21 @@
+-p
+--input-format stream-json
+--output-format stream-json
+--verbose
+--include-partial-messages
+--include-hook-events
+--replay-user-messages
+--setting-sources ""
+--settings <katalog>/produkt-czat.flaga.settings.json
+--tools "ToolSearch,Agent,WebSearch,WebFetch"
+--permission-mode dontAsk
+--permission-prompts none
+--disable-slash-commands
+--system-prompt-file <katalog>/instrukcja.txt
+--system-prompt-snapshot off
+--max-turns 200
+--mcp-config <katalog>/mcp.json
+--strict-mcp-config
+--agents <katalog>/agenci.json
+--forward-subagent-text
+(--session-id <uuid> | --resume <uuid>)

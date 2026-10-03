@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "sonnet",
+  "modelSettings": {
+    "claude-opus-5-5": {"effortLevel": "medium", "maxEffortLevel": "xhigh"},
+    "claude-sonnet-5-5": {"effortLevel": "medium"}
+  },
+  "fallbackModel": ["sonnet", "haiku"],
+  "promptCacheTtl": "1h",
+  "subagentPromptCacheTtl": "5m",
+  "autoCompactWindow": 400000
+}

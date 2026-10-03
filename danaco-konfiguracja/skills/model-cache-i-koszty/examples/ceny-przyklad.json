@@ -1,0 +1,6 @@
+{
+  "overrides": {
+    "claude-opus-5-5": {"input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 10},
+    "claude-sonnet-5-5": {"input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 6}
+  }
+}

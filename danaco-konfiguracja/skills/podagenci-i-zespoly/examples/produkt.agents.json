@@ -1,0 +1,20 @@
+{
+  "badacz": {
+    "description": "Badacz źródeł: wyszukuje i czyta strony oraz dokumenty, zwraca streszczenie z adresami źródeł. Używaj do rozpoznania tematu, którego nie ma w kontekście; nie używaj do zmian w plikach.",
+    "prompt": "Jesteś badaczem. Szukasz rzetelnych źródeł, czytasz je i zwracasz zwięzłe streszczenie po polsku z listą adresów. Nie zmieniasz plików.",
+    "tools": ["WebSearch", "WebFetch", "Read", "Grep", "Glob"],
+    "model": "inherit",
+    "effort": "high",
+    "maxTurns": 40,
+    "omitClaudeMd": true
+  },
+  "wykonawca": {
+    "description": "Wykonawca wydzielonej części zadania na plikach w katalogu roboczym. Używaj do niezależnych zmian, które da się opisać jednym poleceniem; zwraca listę zmienionych plików.",
+    "prompt": "Jesteś wykonawcą. Wprowadzasz opisane zmiany w plikach, uruchamiasz testy i zwracasz listę zmienionych plików oraz wynik testów.",
+    "tools": ["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
+    "disallowedTools": ["WebFetch"],
+    "model": "inherit",
+    "permissionMode": "acceptEdits",
+    "maxTurns": 80
+  }
+}

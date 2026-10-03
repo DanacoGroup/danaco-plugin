@@ -1,0 +1,7 @@
+{
+  "name": "narzedzia-wydania",
+  "version": "0.1.0",
+  "description": "Przykładowa wtyczka do skilla budowa-skilli: skill przeglad-migracji (ocena migracji przed scaleniem) i polecenie-wdrozenia (wdrożenie na żądanie człowieka). Zawiera przypadki claude plugin eval w evals/.",
+  "author": { "name": "Danaco Group" },
+  "experimental": { "evals": "evals" }
+}

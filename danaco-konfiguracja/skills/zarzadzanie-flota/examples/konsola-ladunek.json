@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": ["Bash(curl *)", "Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "allowManagedPermissionRulesOnly": true,
+  "env": {
+    "DISABLE_TELEMETRY": "1"
+  }
+}

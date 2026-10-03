@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Oceń, czy asystent zakończył zadanie zgłoszone przez użytkownika i czy potwierdził wynik testami lub sprawdzeniem. Dane tury: $ARGUMENTS. Odpowiedz JSON-em {\"ok\": true} albo {\"ok\": false, \"reason\": \"co zostało do zrobienia\"}; gdy zadanie jest niewykonalne, dodaj \"impossible\": true.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": ["Bash(curl *)", "Bash(wget *)"]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowManagedDomainsOnly": true,
+      "allowedDomains": ["github.com", "*.npmjs.org", "pypi.org"]
+    }
+  },
+  "deniedMcpServers": [{"serverName": "filesystem"}]
+}

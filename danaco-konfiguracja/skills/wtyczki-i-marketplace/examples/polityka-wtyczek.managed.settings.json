@@ -1,0 +1,23 @@
+{
+  "strictKnownMarketplaces": [
+    {"source": "github", "repo": "przyklad/claude-wtyczki"},
+    {"source": "hostPattern", "hostPattern": "^git\\.przyklad\\.internal$"}
+  ],
+  "blockedMarketplaces": [
+    {"source": "github", "repo": "nieznany/podejrzane-wtyczki"}
+  ],
+  "extraKnownMarketplaces": {
+    "zespol-przyklad": {
+      "source": {"source": "github", "repo": "przyklad/claude-wtyczki"}
+    }
+  },
+  "enabledPlugins": {
+    "narzedzia-zespolu@zespol-przyklad": true
+  },
+  "disableCommandPluginSources": true,
+  "pluginTrustMessage": "Instaluj tylko wtyczki z marketplace firmowego. Pytania: zespół platformy.",
+  "env": {
+    "DISABLE_AUTOUPDATER": "1",
+    "FORCE_AUTOUPDATE_PLUGINS": "1"
+  }
+}

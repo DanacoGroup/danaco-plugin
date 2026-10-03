@@ -1,0 +1,34 @@
+zdarzenie	kiedy	matcher_filtruje	blokuje_exit2	wzorzec_decyzji	uwagi
+SessionStart	start lub wznowienie sesji	źródło: startup, resume, clear, compact, fork	nie	additionalContext, initialUserMessage, sessionTitle, watchPaths, reloadSkills; zwykły stdout trafia do kontekstu	CLAUDE_ENV_FILE dla trwałych zmiennych Bash; hooki mcp_tool pomijane przy starcie i wznowieniu
+Setup	--init-only, albo --init/--maintenance w -p	init, maintenance	nie	brak	jednorazowe przygotowanie w CI; hooki mcp_tool pomijane
+InstructionsLoaded	wczytanie CLAUDE.md lub .claude/rules/*.md	powód: session_start, nested_traversal, path_glob_match, include, compact	nie	brak	diagnostyka pamięci
+UserPromptSubmit	wysłanie promptu, przed modelem	brak	tak (odrzuca prompt)	decision: block, reason; additionalContext; zwykły stdout trafia do kontekstu	domyślny timeout 30 s; nie podmienia treści promptu
+UserPromptExpansion	rozwinięcie polecenia /skill w prompt	nazwa polecenia	tak (blokuje rozwinięcie)	decision: block; additionalContext	wpisanie /skill omija PreToolUse — tu jest kontrola
+MessageDisplay	wyświetlanie tekstu odpowiedzi	brak	nie	hookSpecificOutput.displayContent (tylko ekran)	domyślny timeout 10 s; nie zmienia transkryptu
+PreToolUse	przed wywołaniem narzędzia	nazwa narzędzia	tak (blokuje wywołanie)	hookSpecificOutput.permissionDecision allow/deny/ask/defer, permissionDecisionReason, updatedInput, additionalContext	precedencja deny > defer > ask > allow; timeout command/http/mcp_tool NIE blokuje
+PermissionRequest	potrzebna decyzja uprawnień	nazwa narzędzia	nie (exit 2 ignorowany)	hookSpecificOutput.decision.behavior allow/deny, updatedInput, updatedPermissions	odmowa tylko przez obiekt decision
+PermissionDenied	odmowa w trybie auto	nazwa narzędzia	nie	hookSpecificOutput.retry: true	dziennik odmów
+PostToolUse	po udanym narzędziu	nazwa narzędzia	nie (stderr do modelu)	decision: block, reason; additionalContext; updatedToolOutput	narzędzie już się wykonało
+PostToolUseFailure	po nieudanym narzędziu	nazwa narzędzia	nie (stderr do modelu)	decision: block; additionalContext	—
+PostToolBatch	po partii równoległych wywołań	brak	tak (zatrzymuje pętlę)	decision: block; additionalContext	przed kolejnym żądaniem do modelu
+Notification	powiadomienie Claude Code	typ: permission_prompt, idle_prompt, auth_success, elicitation_*, agent_needs_input, agent_completed, quota_auto_resume_*	nie	brak (terminalSequence działa)	efekty uboczne
+SubagentStart	start podagenta	typ agenta	nie	additionalContext	podagenci nie dziedziczą SessionStart
+SubagentStop	koniec podagenta	typ agenta	tak (podagent pracuje dalej)	decision: block, reason; additionalContext; last_assistant_message na wejściu	Stop w frontmatterze agenta zamienia się na SubagentStop
+TaskCreated	tworzenie zadania TaskCreate	brak	tak (cofa utworzenie)	decision: block	—
+TaskCompleted	oznaczenie zadania jako ukończone	brak	tak (nie ukończy)	exit 2 albo continue: false	—
+Stop	koniec odpowiedzi modelu	brak	tak (model pracuje dalej)	decision: block, reason; hookSpecificOutput.additionalContext; stop_hook_active na wejściu	limit 8 kolejnych kontynuacji (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP); nie odpala przy przerwaniu przez użytkownika
+StopFailure	tura zakończona błędem API	typ błędu: rate_limit, overloaded, authentication_failed, billing_error, server_error, max_output_tokens…	nie	brak (wyjście ignorowane)	tylko dziennik
+TeammateIdle	członek zespołu agentów kończy pracę	brak	tak	exit 2 albo continue: false	agent teams
+ConfigChange	zmiana pliku konfiguracji w trakcie sesji	źródło: user_settings, project_settings, local_settings, policy_settings, skills	tak (poza policy_settings)	decision: block	audyt zmian ustawień
+CwdChanged	zmiana katalogu roboczego	brak	nie	watchPaths	np. direnv
+DirectoryAdded	dodanie katalogu /add-dir lub register_repo_root	slash_command, register_repo_root	nie	brak	—
+FileChanged	zmiana obserwowanego pliku	dosłowne nazwy plików (np. .envrc|.env)	nie	watchPaths	matcher buduje listę obserwowanych plików
+WorktreeCreate	tworzenie worktree	brak	tak (każdy kod ≠ 0)	ścieżka na stdout (command) lub hookSpecificOutput.worktreePath (http)	zastępuje domyślne git worktree
+WorktreeRemove	usuwanie worktree	brak	tak (każdy kod ≠ 0)	tylko kod wyjścia	—
+PreCompact	przed kompakcją	manual, auto	tak (blokuje kompakcję)	decision: block	—
+PostCompact	po kompakcji	manual, auto	nie	brak	diagnostyka cache
+PreModelSwitch	przed zmianą modelu zleconą przez użytkownika lub klienta	kanoniczna nazwa modelu docelowego	tak (blokuje zmianę)	permissionDecision allow/deny/ask lub decision: block	timeout BLOKUJE zmianę; ask poza /model = odmowa; tylko command/http/mcp_tool
+PostModelSwitch	po zmianie modelu (także automatycznej)	kanoniczna nazwa modelu docelowego	nie	additionalContext; zwykły stdout trafia do kontekstu	rejestr fallbacku modelu
+SessionEnd	koniec sesji	powód: clear, resume, logout, prompt_input_exit, other	nie	brak	timeout CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS
+Elicitation	serwer MCP prosi o dane	nazwa serwera MCP	tak (odrzuca)	hookSpecificOutput.action accept/decline/cancel, content	przy --permission-prompts none elicitation jest anulowana
+ElicitationResult	po odpowiedzi na elicitation	nazwa serwera MCP	tak (decline)	hookSpecificOutput.action, content	—

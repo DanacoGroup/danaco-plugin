@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Bash(sudo *)"
+    ]
+  },
+  "disableAutoMode": "disable",
+  "autoUpdatesChannel": "stable",
+  "minimumVersion": "2.1.283",
+  "requiredMinimumVersion": "2.1.283",
+  "allowedProviders": ["anthropic"],
+  "forceLoginMethod": "claudeai",
+  "forceLoginOrgUUID": ["00000000-0000-0000-0000-000000000000"],
+  "cleanupPeriodDays": 30,
+  "companyAnnouncements": ["Polityka Claude Code: zasady w wiki działu IT."],
+  "strictKnownMarketplaces": [
+    {"source": "github", "repo": "przyklad-org/wtyczki-zespolu"}
+  ],
+  "allowManagedHooksOnly": false,
+  "env": {
+    "DISABLE_ERROR_REPORTING": "1"
+  }
+}

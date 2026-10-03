@@ -1,0 +1,19 @@
+{
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [
+    {"serverUrl": "https://mcp.wewnetrzne.example.com/*"},
+    {"serverUrl": "https://api.githubcopilot.com/*"},
+    {"serverCommand": ["/usr/local/bin/firmowy-serwer-mcp", "--konfiguracja", "/etc/firma/mcp.json"]}
+  ],
+  "deniedMcpServers": [
+    {"serverName": "claude.ai Slack"},
+    {"serverUrl": "https://*.ngrok-free.app/*"}
+  ],
+  "managedMcpServers": {
+    "wyszukiwarka": {
+      "type": "http",
+      "url": "https://mcp.wewnetrzne.example.com/szukaj"
+    }
+  },
+  "disableClaudeAiConnectors": true
+}

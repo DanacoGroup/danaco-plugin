@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "tlsTerminate": {},
+      "strictAllowlist": true,
+      "allowedDomains": ["*.github.com", "registry.npmjs.org"]
+    },
+    "credentials": {
+      "envVars": [
+        {"name": "GH_TOKEN", "mode": "mask", "injectHosts": ["api.github.com"]},
+        {"name": "NPM_TOKEN", "mode": "mask", "injectHosts": ["registry.npmjs.org"]},
+        {"name": "AWS_SECRET_ACCESS_KEY", "mode": "deny"}
+      ],
+      "files": [
+        {"path": "~/.config/gh/hosts.yml", "mode": "mask", "extract": "oauth_token:\\s*(\\S+)", "injectHosts": ["api.github.com"], "onExtractNoMatch": "deny"},
+        {"path": "~/.ssh", "mode": "deny"},
+        {"path": "~/.aws", "mode": "deny"}
+      ]
+    }
+  }
+}

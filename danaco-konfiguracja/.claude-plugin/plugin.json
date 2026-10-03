@@ -1,0 +1,29 @@
+{
+  "name": "danaco-konfiguracja",
+  "version": "1.0.0",
+  "description": "Kompletna wiedza i narzędzia do poprawnej konfiguracji Claude Code i Claude Code CLI: ustawienia i hierarchia, uprawnienia i tryby, piaskownica, hooki, MCP, podagenci, skille, wtyczki, instrukcja systemowa i pamięć, tryb -p i osadzanie w produktach, model/cache/koszty, zmienne środowiskowe, flota, diagnostyka i bezpieczeństwo wdrożeń — 15 skilli z referencjami, walidatory, generator profili, atrapa API do prób bez modelu, polecenie audytu i podagent audytora.",
+  "author": {
+    "name": "Danaco Group"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "claude-code",
+    "konfiguracja",
+    "settings",
+    "uprawnienia",
+    "piaskownica",
+    "hooki",
+    "mcp",
+    "podagenci",
+    "skille",
+    "wtyczki",
+    "headless",
+    "agent-sdk",
+    "prompt-cache",
+    "zmienne-srodowiskowe",
+    "ustawienia-zarzadzane",
+    "diagnostyka",
+    "bezpieczenstwo",
+    "audyt"
+  ]
+}

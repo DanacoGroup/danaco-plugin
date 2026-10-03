@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "allowedHttpHookUrls": ["http://127.0.0.1:8787/*"],
+  "httpHookAllowedEnvVars": ["PRODUKT_HOOK_TOKEN"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "produkt",
+            "tool": "straznik_agenta",
+            "input": {
+              "sesja": "${session_id}",
+              "typ": "${tool_input.subagent_type}"
+            },
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8787/hook/odmowa",
+            "headers": {"Authorization": "Bearer ${PRODUKT_HOOK_TOKEN}"},
+            "allowedEnvVars": ["PRODUKT_HOOK_TOKEN"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8787/hook/zmiana-modelu",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8787/hook/blad-api",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

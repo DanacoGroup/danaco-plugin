@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "mcp__produkt",
+      "WebSearch",
+      "WebFetch(domain:docs.example.com)"
+    ],
+    "deny": [
+      "Agent(model:*)",
+      "Agent(isolation:*)",
+      "WebFetch(domain:pastebin.com)",
+      "WebFetch(domain:transfer.sh)"
+    ]
+  },
+  "disableAutoMode": "disable",
+  "allowedMcpServers": [
+    {
+      "serverName": "produkt"
+    }
+  ],
+  "disableClaudeAiConnectors": true
+}

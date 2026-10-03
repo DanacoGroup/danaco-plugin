@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "produkt": {
+      "type": "stdio",
+      "command": "/opt/produkt/bin/most-mcp",
+      "args": ["--gniazdo", "${PRODUKT_GNIAZDO:-/run/produkt/mcp.sock}"],
+      "env": {
+        "PRODUKT_KONTO": "${PRODUKT_KONTO:-}"
+      },
+      "alwaysLoad": true,
+      "timeout": 600000
+    }
+  }
+}
