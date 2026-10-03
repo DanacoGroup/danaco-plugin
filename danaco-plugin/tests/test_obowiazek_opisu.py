@@ -21,7 +21,15 @@ class ObowiazekOpisu(unittest.TestCase):
         (katalog / "rejestr" / "dane.json").write_text(json.dumps({"narzedzia": [
             {"polecenie": "jq", "skill": "jq"}, {"polecenie": "grep", "skill": "tekst"},
             {"polecenie": "sed", "skill": "tekst"}, {"polecenie": "ffmpeg9", "skill": "ffmpeg"},
-            {"polecenie": "global", "skill": "global"}]}), encoding="utf-8")
+            {"polecenie": "global", "skill": "global"},
+            {"polecenie": "danaco-srodowisko", "skill": "maszyny-wirtualne"},
+            {"polecenie": "maszyna-windows", "skill": "maszyna-windows"}]}), encoding="utf-8")
+        (katalog / "maszyny.json").write_text(json.dumps({"polecenie": "danaco-srodowisko", "maszyny": {
+            "windows": {"system": "Windows 11", "skill": "maszyna-windows", "nakladka": "maszyna-windows"},
+            "linux": {"system": "Debian 13", "skill": "maszyna-linux", "nakladka": None}}}), encoding="utf-8")
+        (katalog / "skille" / "maszyna-linux").mkdir(parents=True)
+        (katalog / "skille" / "maszyna-linux" / "SKILL.md").write_text("---\nname: maszyna-linux\n---\n", encoding="utf-8")
+        self.katalog = katalog
         self.konf = Path(self.tmp.name) / "konf"
         self.env = dict(os.environ, DANACO_KATALOG=str(katalog), CLAUDE_CONFIG_DIR=str(self.konf))
 
@@ -104,6 +112,61 @@ class ObowiazekOpisu(unittest.TestCase):
         wynik = self.hak("przed", {"session_id": "s1", "tool_name": "mcp__x__uruchom",
                                    "tool_input": {"polecenie": "ffmpeg9 -i a b"}})
         self.assertIn("ffmpeg9", wynik)
+
+    def maszyna(self, strefa: str, pelny: bool = True, sesja: str = "s1") -> None:
+        self.hak("po", {"session_id": sesja, "tool_name": "mcp__plugin_danaco-plugin_danaco-programy__maszyna",
+                        "tool_input": {"strefa": strefa, "pelny": pelny},
+                        "tool_response": "wykaz\n\n--- SKILL: /s/SKILL.md ---\nskill" if pelny else "sam wykaz"})
+
+    def powod(self, polecenie: str) -> str:
+        wynik = self.bash(polecenie)
+        return json.loads(wynik)["hookSpecificOutput"]["permissionDecisionReason"] if wynik else ""
+
+    def test_start_strefy_bez_skilla_maszyny_odrzucony(self):
+        self.opis("danaco-srodowisko")
+        powod = self.powod("danaco-srodowisko linux start")
+        self.assertIn("Przed wejściem na maszynę", powod)
+        self.assertIn("maszyna-linux", powod)
+
+    def test_stan_i_kolejka_bez_skilla_maszyny(self):
+        self.opis("danaco-srodowisko")
+        for polecenie in ("danaco-srodowisko linux stan", "danaco-srodowisko windows kolejka",
+                          "danaco-srodowisko strefy", "danaco-srodowisko --help",
+                          "danaco-srodowisko --zadanie t1 linux stan"):
+            with self.subTest(polecenie=polecenie):
+                self.assertEqual(self.bash(polecenie), "")
+
+    def test_maszyna_ze_skillem_zalicza_wejscie(self):
+        self.opis("danaco-srodowisko")
+        self.maszyna("linux")
+        self.assertEqual(self.bash("sudo danaco-srodowisko --zadanie t1 linux start && danaco-srodowisko linux stop"), "")
+        self.assertIn("windows", self.powod("danaco-srodowisko windows start"))
+
+    def test_maszyna_bez_skilla_nie_zalicza(self):
+        self.opis("danaco-srodowisko")
+        self.maszyna("linux", pelny=False)
+        self.assertNotEqual(self.powod("danaco-srodowisko linux shell 'ls'"), "")
+
+    def test_opis_skilla_maszyny_zalicza_wejscie(self):
+        self.opis("danaco-srodowisko")
+        self.opis("maszyna-linux")
+        self.assertEqual(self.bash("danaco-srodowisko linux przeslij ./p"), "")
+
+    def test_nakladka_maszyny_zaliczona_opisem_programu(self):
+        self.assertIn("maszyna-windows", self.powod("maszyna-windows start"))
+        self.opis("maszyna-windows")
+        self.assertEqual(self.bash("maszyna-windows start; maszyna-windows ssh 'dir'"), "")
+        self.opis("danaco-srodowisko")
+        self.assertEqual(self.bash("/usr/local/bin/danaco-srodowisko windows stop"), "")
+
+    def test_strefa_ze_zmiennej_odrzucona(self):
+        self.opis("danaco-srodowisko")
+        self.assertIn("dosłownie", self.powod('S=linux; danaco-srodowisko "$S" start'))
+
+    def test_bez_wykazu_maszyn_nie_blokuje(self):
+        (self.katalog / "maszyny.json").unlink()
+        self.opis("danaco-srodowisko")
+        self.assertEqual(self.bash("danaco-srodowisko linux start"), "")
 
     def test_zly_json_nie_blokuje(self):
         wynik = subprocess.run([sys.executable, str(HOOK), "przed"], input="nie json", text=True,

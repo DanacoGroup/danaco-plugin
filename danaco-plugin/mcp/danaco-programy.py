@@ -33,11 +33,12 @@ else:
                            pathlib.Path(os.environ.get("XDG_CACHE_HOME", pathlib.Path.home() / ".cache")) / "danaco-programy" / "katalog")
 REJESTR = KATALOG / "rejestr"
 SKILLE = KATALOG / "skille"
+MASZYNY = KATALOG / "maszyny.json"  # generuje zbuduj_indeks.py z konfiguracji stref, WZORZEC-NARZEDZIA.md i skilli maszyn
 WYMIANA = "/danaco/wymiana"  # na nexusie: /danaco/wymiana/<konto>/<serwer>/<zadanie>/{we,wy}
 MAKS_SKILL = 60000  # znaków SKILL.md zwracanych przez `opis`
 MAKS_WYJSCIE = 20000  # znaków stdout/stderr zwracanych przez `uruchom`
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]
-WERSJA = "1.4.0"
+WERSJA = "1.5.0"
 
 WSTEP_INSTRUKCJI = (
     "Programy Danaco działają WYŁĄCZNIE na danaco-nexus (/danaco/programy). Katalog to drzewo: poniżej są wszystkie "
@@ -68,7 +69,8 @@ def synchronizuj_katalog(wymus: bool = False) -> str:
     KATALOG.mkdir(parents=True, exist_ok=True)
     wynik = subprocess.run(
         ["rsync", "-a", "--delete", "-e", " ".join(SSH),
-         "--include=/rejestr/***", "--include=/dzialy.json", "--include=/skille/", "--include=/skille/*/",
+         "--include=/rejestr/***", "--include=/dzialy.json", "--include=/maszyny.json", "--include=/skille/",
+         "--include=/skille/*/",
          "--include=/skille/*/SKILL.md", "--include=/skille/*/references/***", "--exclude=*",
          f"{NEXUS}:{KATALOG_NEXUS}/", f"{KATALOG}/"],
         capture_output=True, text=True, timeout=300)
@@ -361,6 +363,99 @@ def narzedzie_lista(arg: dict) -> str:
     return "\n".join([f"Dział {arg.get('dzial')} ({len(wpisy)}):"] + [f"- {n}: {w.get('krotki_opis') or w.get('do_czego', '')}" for n, w in wpisy])
 
 
+WSTEP_MASZYN = (
+    "Maszyny wirtualne (strefy środowisk, polecenie `{polecenie} <strefa> <operacja>`): każda sesja startuje "
+    "z czystego wzorca i po `stop` znika cała — wyniki pobierasz wcześniej; gniazda i kolejka z priorytetami "
+    "({kolejka}). Szczegóły maszyny (programy we wzorcu i braki, dostęp, limity) daje narzędzie `maszyna`. "
+    "Przed wejściem na maszynę (start i każda operacja poza `stan`) obowiązkowo przeczytaj w tej sesji jej "
+    "skill: `maszyna` (domyślnie ze skillem) albo `opis <skill>` — bez tego polecenie jest blokowane. "
+    "Zasady wspólne wszystkich maszyn: skill `{ogolny}`."
+)
+
+
+def wczytaj_maszyny() -> dict:
+    """Wykaz maszyn z katalogu (maszyny.json); pusty, gdy katalog go nie ma."""
+    try:
+        dane = json.loads(MASZYNY.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dane if isinstance(dane, dict) and isinstance(dane.get("maszyny"), dict) else {}
+
+
+def czas(sekundy) -> str:
+    if not isinstance(sekundy, int):
+        return "?"
+    if sekundy % 3600 == 0:
+        return f"{sekundy // 3600} h"
+    return f"{sekundy // 60} min" if sekundy % 60 == 0 else f"{sekundy} s"
+
+
+def wiersz_maszyny(strefa: str, m: dict) -> str:
+    nakladka = f", nakładka `{m['nakladka']}`" if m.get("nakladka") else ""
+    return f"- {strefa} — {m.get('system', '')}, {m.get('gniazda', '?')} gniazda, skill `{m.get('skill')}`{nakladka}: {m.get('opis', '')}"
+
+
+def wykaz_maszyn(dane: dict) -> str:
+    """Zasady i wszystkie maszyny z jednym zdaniem opisu (instrukcje serwera i narzędzie `maszyny`)."""
+    maszyny = dane.get("maszyny") or {}
+    if not maszyny:
+        return ""
+    wiersze = [WSTEP_MASZYN.format(polecenie=dane.get("polecenie", "danaco-srodowisko"),
+                                   kolejka=" > ".join(dane.get("kolejka") or []),
+                                   ogolny=dane.get("skill_ogolny", "")),
+               "", f"Maszyny ({len(maszyny)}):"]
+    wiersze += [wiersz_maszyny(s, m) for s, m in maszyny.items()]
+    return "\n".join(wiersze)
+
+
+def opis_maszyny(dane: dict, strefa: str) -> str:
+    """Szczegółowy wykaz jednej maszyny: dostęp, zasoby, limity ról, programy we wzorcu i braki."""
+    m = dane["maszyny"][strefa]
+    polecenie = dane.get("polecenie", "danaco-srodowisko")
+    limity = m.get("limity") or {}
+    wiersze = [f"Maszyna {strefa} — {m.get('system', '')}", m.get("opis", ""), "",
+               f"Dostęp (konta serwera): `{polecenie} {strefa} <operacja>`"
+               + (f" albo nakładka `{m['nakladka']} <operacja>`" if m.get("nakladka") else "")
+               + f"; Nexus: narzędzie `srodowisko` (strefa {strefa}). Operacje i przebieg: skill `{m.get('skill')}`.",
+               f"Gniazda: {m.get('gniazda')} (każde to osobna maszyna na warstwie nad wspólnym wzorcem; "
+               f"rezerwa dla produkcji i admina: {limity.get('rezerwa', 0)}).",
+               f"Zasoby maszyny: CPU {m.get('zasoby', {}).get('cpu')}, RAM do {m.get('zasoby', {}).get('ram')}.",
+               f"Uprawnienia w maszynie (administrator, kończą się na granicy maszyny): {m.get('uprawnienia') or '?'}.",
+               f"Limity: polecenie do {czas(limity.get('polecenie_maks_s'))}, przesłanie do "
+               f"{limity.get('przeslanie_maks_mb', '?')} MB, wyniki do {limity.get('wyniki_maks_mb', '?')} MB, "
+               f"program (przeslij-program) do {limity.get('program_maks_mb', '?')} MB.",
+               "Role (kolejność w kolejce; gniazd naraz, sesja / bezczynność):"]
+    for rola, r in (m.get("limity_rol") or {}).items():
+        wiersze.append(f"- {rola}: {r.get('gniazda_maks')} gn., {czas(r.get('sesja_maks_s'))} / "
+                       f"{czas(r.get('bezczynnosc_s'))}")
+    wzorzec = m.get("wzorzec") or {}
+    if wzorzec.get("narzedzia"):
+        wiersze += ["", f"Programy we wzorcu i braki — {wzorzec.get('naglowek', '')}:", wzorzec["narzedzia"]]
+    return "\n".join(wiersze)
+
+
+def narzedzie_maszyny(arg: dict) -> str:
+    INDEKS.odswiez()
+    tekst = wykaz_maszyn(wczytaj_maszyny())
+    return z_uwaga(tekst or "Katalog nie ma wykazu maszyn (maszyny.json) — strefy środowisk nie są tu opisane.")
+
+
+def narzedzie_maszyna(arg: dict) -> str:
+    INDEKS.odswiez()
+    dane = wczytaj_maszyny()
+    strefa = str(arg.get("strefa", "")).strip().lower()
+    if strefa not in (dane.get("maszyny") or {}):
+        return f"Nie ma maszyny „{strefa}”. Dostępne: {', '.join(dane.get('maszyny') or {}) or 'brak'}."
+    czesci = [opis_maszyny(dane, strefa)]
+    skill = dane["maszyny"][strefa].get("skill")
+    plik = SKILLE / str(skill) / "SKILL.md"
+    if arg.get("pelny", True) and skill and plik.is_file():
+        czesci.append(f"--- SKILL: {plik} ---\n{plik.read_text(errors='replace')[:MAKS_SKILL]}")
+    elif arg.get("pelny", True):
+        czesci.append(f"(skill maszyny `{skill}` niedostępny w katalogu)")
+    return z_uwaga("\n\n".join(czesci))
+
+
 NARZEDZIA = {
     "szukaj": (narzedzie_szukaj, "Wyszukuje programy i skille serwera po temacie, zadaniu albo nazwie (np. „usuń tło ze zdjęcia”, „kodowanie av1”, „audyt wcag”). Zwraca krótką listę: polecenie, dział, do czego służy.", {
         "type": "object",
@@ -396,15 +491,27 @@ NARZEDZIA = {
         "properties": {"dzial": {"type": "string", "description": "Nazwa działu z `dzialy`"}},
         "required": ["dzial"],
     }),
+    "maszyny": (narzedzie_maszyny, "Wykaz maszyn wirtualnych (strefy środowisk: system, gniazda, skill maszyny, jedno zdanie opisu) i zasady wejścia na maszynę.", {"type": "object", "properties": {}}),
+    "maszyna": (narzedzie_maszyna, "Szczegółowy wykaz maszyny (programy we wzorcu i czego brakuje, dostęp, zasoby, limity ról) i jej skill (domyślnie). Skill maszyny jest obowiązkowy przed wejściem na nią - bez niego start i inne operacje poza `stan` są blokowane.", {
+        "type": "object",
+        "properties": {
+            "strefa": {"type": "string", "description": "Strefa z wykazu maszyn (np. windows, android, linux)"},
+            "pelny": {"type": "boolean", "description": "Dołącz skill maszyny (domyślnie tak; false = sam wykaz)"},
+        },
+        "required": ["strefa"],
+    }),
 }
 
 
 def instrukcje() -> str:
-    """Zasady i wszystkie dziedziny z jednym zdaniem opisu; nazwy programów niosą narzędzia."""
+    """Zasady, wszystkie dziedziny i wszystkie maszyny z jednym zdaniem opisu; szczegóły niosą narzędzia."""
     INDEKS.odswiez()
     wiersze = [WSTEP_INSTRUKCJI, "", f"Dziedziny ({len(INDEKS.dzialy)}, razem {len(INDEKS.wpisy)} programów):"]
     for nazwa, d in sorted(INDEKS.dzialy.items()):
         wiersze.append(f"- {nazwa} ({d['liczba']}): {d.get('opis', '')}".rstrip(": "))
+    maszyny = wykaz_maszyn(wczytaj_maszyny())
+    if maszyny:
+        wiersze += ["", maszyny]
     return "\n".join(wiersze)
 
 

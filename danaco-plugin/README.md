@@ -174,7 +174,14 @@ cokolwiek zainstaluje albo uzna, że go brak.
 | `opis` | Pełny opis programu albo skilla: ścieżka, przeznaczenie, test działania i instrukcja `SKILL.md`; model czyta go przed pierwszym użyciem programu. |
 | `dzialy` | Lista działów katalogu z liczbą poleceń. |
 | `lista` | Wszystkie polecenia jednego działu z jednozdaniowym opisem. |
+| `maszyny` | Wykaz maszyn wirtualnych (strefy środowisk: system, gniazda, skill maszyny, jedno zdanie opisu) — ten sam, który stoi w instrukcjach serwera. |
+| `maszyna` | Szczegółowy wykaz jednej maszyny (programy we wzorcu i braki, dostęp, zasoby, limity ról) i jej skill; skill maszyny jest obowiązkowy przed wejściem na nią. |
 | `uruchom` | Wykonuje polecenie z programami Danaco na danaco-nexus: pliki z `pliki` trafiają do `$WE`, polecenie działa w `$WY`, a zawartość `$WY` wraca do `wyniki_do`. |
+
+Instrukcje serwera podają wszystkie dziedziny katalogu i wszystkie maszyny z jednym zdaniem
+opisu. Wykaz maszyn serwer czyta z `katalog/maszyny.json`, który `zbuduj_indeks.py` składa z
+konfiguracji usługi stref (`/etc/danaco/srodowiska.json`), `WZORZEC-NARZEDZIA.md` i frontmattera
+skilli maszyn — serwer niczego o maszynach nie powiela.
 
 Tryb pracy serwer wybiera sam po nazwie hosta; zmienna `DANACO_PROGRAMY_TRYB`
 (`lokalny` albo `zdalny`) go nadpisuje.

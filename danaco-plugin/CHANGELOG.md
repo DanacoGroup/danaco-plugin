@@ -5,6 +5,11 @@ semantycznym. Wpisy do wersji 2.3.2 włącznie obejmują także tryb ciągłej p
 od wersji 3.0.0 prowadzi osobny plugin `danaco-praca`; podawana w nich wersja klienta
 Claude Code dotyczy weryfikacji tamtego mechanizmu.
 
+## 3.5.0 (03.10.2026)
+- Serwer MCP `danaco-programy` 1.5.0: instrukcje serwera podają, obok dziedzin, wszystkie maszyny wirtualne (strefy środowisk) z jednym zdaniem opisu i zasadą wejścia; nowe narzędzia `maszyny` (wykaz) i `maszyna` (programy we wzorcu i braki, dostęp, zasoby, limity ról, uprawnienia administratora w maszynie oraz skill maszyny). Źródło: `katalog/maszyny.json` generowany przez `zbuduj_indeks.py` (konfiguracja usługi stref, `WZORZEC-NARZEDZIA.md`, frontmatter skilli maszyn); tryb zdalny synchronizuje ten plik razem z rejestrem.
+- Hook `obowiazek_opisu`: wejście na maszynę (`danaco-srodowisko <strefa> <operacja>` i nakładki `maszyna-windows`, `android-emulator` dla operacji innych niż `stan`, `kolejka`, pomoc) wymaga przeczytanego w sesji skilla tej maszyny (`maszyna` ze skillem albo `opis <skill>`); strefa podana zmienną jest odrzucana. `opis` samego skilla zalicza ten skill.
+- Testy: `tests/test_serwer_maszyny.py` (instrukcje i narzędzia maszyn), rozszerzone `tests/test_obowiazek_opisu.py`.
+
 ## 3.4.1 (03.10.2026)
 - Hook `obowiazek_opisu`: program zaliczony dopiero z przeczytanym skillem (w tym wywołaniu `opis` albo wcześniej w sesji); skill wspólny kilku programów czyta się raz, dla kolejnych wystarcza `opis` z pelny=false, a odmowa mówi, który wariant jest potrzebny.
 - Hook nie rozbiera treści heredoców na polecenia (fałszywe odmowy np. dla wiersza kodu `global s`); ochrona stanu sprawdza tylko rzeczywistą ścieżkę katalogu stanu (polecenie albo zapisywany plik), więc edycja kodu hooka nie jest blokowana; katalog stanu: `przeczytane-opisy`.

@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "^mcp__.*danaco-programy__opis$",
+        "matcher": "^mcp__.*danaco-programy__(opis|maszyna)$",
         "hooks": [
           {
             "type": "command",
